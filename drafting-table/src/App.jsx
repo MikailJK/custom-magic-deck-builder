@@ -106,13 +106,13 @@ export default function App() {
   }
 
   async function handleSaveCard(cardPatch) {
-    await db.saveCard(cardPatch, editingCard?.id || null);
+    await db.saveCard(cardPatch, editingCard?.id || null, editingCard?.back?.id || null);
     await refreshCards();
     setCardFormOpen(false);
   }
 
-  async function handleDeleteCard(id) {
-    await db.deleteCard(id);
+  async function handleDeleteCard(id, backId) {
+    await db.deleteCard(id, backId);
     await refreshCards();
     setDetailCard(null);
   }
@@ -285,7 +285,7 @@ export default function App() {
     return <Auth />;
   }
   if (booting) {
-    return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}><p className="dt-loading">Loading the drafting table…</p></div>;
+    return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}><p className="dt-loading">Loading Barnky Deck…</p></div>;
   }
 
   return (
@@ -335,7 +335,7 @@ export default function App() {
           onEdit={() => { setEditingCard(detailCard); setDetailCard(null); setCardFormOpen(true); }}
           onDelete={() => {
             if (window.confirm(`Remove "${detailCard.name}" from the card pool? This can't be undone.`)) {
-              handleDeleteCard(detailCard.id);
+              handleDeleteCard(detailCard.id, detailCard.back?.id);
             }
           }}
         />
