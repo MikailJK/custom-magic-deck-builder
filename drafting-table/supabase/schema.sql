@@ -30,6 +30,10 @@ create table if not exists decks (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   format text not null default 'Deck' check (format in ('Deck', 'Cube')),
+  -- Ordered list of the deck's custom column names. Cards point at one by name;
+  -- nothing about columns is written back to the shared card pool.
+  categories text[] not null default '{}',
+  target_size integer not null default 40,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -38,7 +42,10 @@ create table if not exists deck_cards (
   deck_id uuid not null references decks(id) on delete cascade,
   card_id uuid not null references cards(id) on delete cascade,
   qty integer not null default 1 check (qty > 0),
-  primary key (deck_id, card_id)
+  board text not null default 'main' check (board in ('main', 'maybe')),
+  category text,
+  -- Board is part of the key so a card can sit on the deck and the maybeboard at once.
+  primary key (deck_id, card_id, board)
 );
 
 alter table cards enable row level security;
@@ -64,4 +71,5 @@ create policy "authenticated update deck_cards" on deck_cards for update using (
 create policy "authenticated delete deck_cards" on deck_cards for delete using (auth.role() = 'authenticated');
 
 create index if not exists idx_deck_cards_deck on deck_cards(deck_id);
+create index if not exists idx_deck_cards_deck_board on deck_cards(deck_id, board);
 create index if not exists idx_cards_name on cards(name);

@@ -12,3 +12,22 @@ export const RARITIES = ["Common", "Uncommon", "Rare", "Mythic"];
 export const RARITY_HEX = { Common: "#9C9689", Uncommon: "#7FA4B0", Rare: "#C8A24B", Mythic: "#C1583B" };
 
 export const emptyFilters = { text: "", colors: [], type: "All", rarity: "All", tag: "All" };
+
+export const DEFAULT_TARGET_SIZE = 40;
+export const UNCATEGORIZED = "Uncategorized";
+export const CURVE_CAP = 7; // costs at or above this share one "7+" bucket
+
+export const GROUP_MODES = [
+  { key: "type", label: "Type" },
+  { key: "cost", label: "Cost" },
+  { key: "category", label: "Category" },
+];
+export const SORT_MODES = [
+  { key: "name", label: "Name" },
+  { key: "cost", label: "Cost" },
+];
+export const VIEW_MODES = [
+  { key: "stacks", label: "Stacks" },
+  { key: "text", label: "Text" },
+  { key: "grid", label: "Grid" },
+];

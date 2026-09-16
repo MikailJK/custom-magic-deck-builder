@@ -49,6 +49,17 @@ export async function scanCardImage(imageSrc, onProgress) {
   return results;
 }
 
+// The crops clip the card's border, and Tesseract reads that vertical edge as a
+// pipe or bracket — so the name comes back as "| Lightning Bolt". Only symbols
+// are stripped from the ends, never letters or digits, so a name that genuinely
+// starts with "I" or "1" survives.
+const EDGE_SYMBOLS = "\\s|¦\\[\\]{}()<>/\\\\_+=~`^*\"'—–-";
+const trimFrameArtifacts = (value) =>
+  value
+    .replace(new RegExp(`^[${EDGE_SYMBOLS}]+`), "")
+    .replace(new RegExp(`[${EDGE_SYMBOLS}]+$`), "")
+    .trim();
+
 // Turns raw per-region OCR text into a partial card-form patch. Mana cost
 // and colors are deliberately left out — those are icon symbols on most
 // card templates, not real text, so OCR can't read them reliably.
@@ -56,7 +67,8 @@ export function parseOcrResults(results) {
   const patch = {};
   if (results.name) {
     const firstLine = results.name.split("\n").map((l) => l.trim()).filter(Boolean)[0];
-    if (firstLine) patch.name = firstLine;
+    const name = firstLine ? trimFrameArtifacts(firstLine) : "";
+    if (name) patch.name = name;
   }
   if (results.typeLine) {
     const line = results.typeLine.replace(/\n/g, " ").trim();
@@ -65,7 +77,8 @@ export function parseOcrResults(results) {
     const subPart = parts.slice(1).join(" ").trim();
     const matched = CARD_TYPES.find((t) => mainPart.toLowerCase().includes(t.toLowerCase()));
     if (matched) patch.type = matched;
-    if (subPart) patch.subtype = subPart;
+    const subtype = trimFrameArtifacts(subPart);
+    if (subtype) patch.subtype = subtype;
   }
   if (results.rulesText) {
     const cleaned = results.rulesText.replace(/\n{2,}/g, "\n").trim();
