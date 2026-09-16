@@ -1,157 +1,224 @@
 import { useState, useEffect, useMemo } from "react";
-import { ArrowLeft, Minus, Plus, X } from "lucide-react";
-import FilterBar from "./FilterBar";
-import ManaPips from "./ManaPips";
-import ManaCurveChart from "./ManaCurveChart";
-import { MANA_COLORS, TYPE_ORDER } from "../constants";
+import { ArrowLeft, Plus } from "lucide-react";
+import DeckBoard from "./DeckBoard";
+import DeckStats from "./DeckStats";
+import CardSearchModal from "./CardSearchModal";
+import CardPreview from "./CardPreview";
+import useCoarsePointer from "../lib/useCoarsePointer";
+import usePersistentState from "../lib/usePersistentState";
+import { GROUP_MODES, SORT_MODES, VIEW_MODES, UNCATEGORIZED } from "../constants";
+
+const isMode = (modes) => (value) => modes.some((m) => m.key === value);
 
 export default function DeckEditor({
-  deck, cardsById, filters, setFilters, allTags, filteredCards,
-  onAdd, onDecrement, onRemove, onRename, onBack, onOpenCardDetail,
+  deck, cards, cardsById, onBack, onOpenCardDetail,
+  onAddCard, onSetQty, onRemove, onMoveBoard, onSetCategory,
+  onRename, onSetTarget, onAddColumn, onRenameColumn, onDeleteColumn,
 }) {
   const [nameDraft, setNameDraft] = useState(deck.name);
-  useEffect(() => setNameDraft(deck.name), [deck.id]);
+  const [activeBoard, setActiveBoard] = useState("main");
+  const [groupBy, setGroupBy] = usePersistentState("dt.deck.groupBy", "type", isMode(GROUP_MODES));
+  const [sortBy, setSortBy] = usePersistentState("dt.deck.sortBy", "name", isMode(SORT_MODES));
+  const [viewMode, setViewMode] = usePersistentState("dt.deck.viewMode", "stacks", isMode(VIEW_MODES));
+  const [collapsed, setCollapsed] = useState(() => new Set());
+  const [addOpen, setAddOpen] = useState(false);
+  const [dragging, setDragging] = useState(null);
+  const [boardDropTarget, setBoardDropTarget] = useState(null);
+  const [newColumn, setNewColumn] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [openMenuKey, setOpenMenuKey] = useState(null);
 
-  const totalCount = deck.cards.reduce((a, c) => a + c.qty, 0);
+  const coarsePointer = useCoarsePointer();
+  const dragEnabled = !coarsePointer;
+  const isCube = deck.format === "Cube";
 
-  const curveData = useMemo(() => {
-    const buckets = [0, 1, 2, 3, 4, 5, 6, 7];
-    const counts = Object.fromEntries(buckets.map((b) => [b, 0]));
-    deck.cards.forEach((entry) => {
-      const card = cardsById[entry.cardId];
-      if (!card || card.type === "Land") return;
-      const cmc = Math.min(7, Math.max(0, card.cmc || 0));
-      counts[cmc] += entry.qty;
+  useEffect(() => setNameDraft(deck.name), [deck.id, deck.name]);
+
+  const entries = useMemo(
+    () => deck.cards.map((e) => ({ ...e, card: cardsById[e.cardId] })),
+    [deck.cards, cardsById]
+  );
+  const mainEntries = useMemo(() => entries.filter((e) => e.board === "main"), [entries]);
+  const maybeEntries = useMemo(() => entries.filter((e) => e.board === "maybe"), [entries]);
+  const entriesByKey = useMemo(
+    () => Object.fromEntries(entries.map((e) => [`${e.board}:${e.cardId}`, e])),
+    [entries]
+  );
+
+  const mainCount = mainEntries.reduce((a, e) => a + e.qty, 0);
+  const maybeCount = maybeEntries.reduce((a, e) => a + e.qty, 0);
+
+  const collapsePrefix = `${activeBoard}:${groupBy}:`;
+  const boardCollapsed = useMemo(() => {
+    const out = new Set();
+    collapsed.forEach((k) => { if (k.startsWith(collapsePrefix)) out.add(k.slice(collapsePrefix.length)); });
+    return out;
+  }, [collapsed, collapsePrefix]);
+
+  const toggleCollapse = (key) =>
+    setCollapsed((s) => {
+      const next = new Set(s);
+      const full = collapsePrefix + key;
+      if (next.has(full)) next.delete(full); else next.add(full);
+      return next;
     });
-    return buckets.map((b) => ({ cmc: b === 7 ? "7+" : String(b), count: counts[b] }));
-  }, [deck.cards, cardsById]);
 
-  const colorCounts = useMemo(() => {
-    const counts = { W: 0, U: 0, B: 0, R: 0, G: 0 };
-    deck.cards.forEach((entry) => {
-      const card = cardsById[entry.cardId];
-      if (!card) return;
-      (card.colors || []).forEach((c) => { if (counts[c] !== undefined) counts[c] += entry.qty; });
-    });
-    return counts;
-  }, [deck.cards, cardsById]);
+  const showPreview = (card, e) => {
+    if (coarsePointer || dragging) return;
+    setPreview({ card, x: e.clientX, y: e.clientY });
+  };
+  const hidePreview = () => setPreview(null);
 
-  const grouped = useMemo(() => {
-    const groups = {};
-    deck.cards.forEach((entry) => {
-      const card = cardsById[entry.cardId];
-      const type = card ? card.type : "Removed card";
-      if (!groups[type]) groups[type] = [];
-      groups[type].push({ ...entry, card });
-    });
-    const keys = [...TYPE_ORDER.filter((t) => groups[t]), ...Object.keys(groups).filter((k) => !TYPE_ORDER.includes(k))];
-    return keys.map((type) => ({ type, entries: groups[type].sort((a, b) => (a.card?.name || "").localeCompare(b.card?.name || "")) }));
-  }, [deck.cards, cardsById]);
+  // Opening a row menu drops the floating preview so it can't sit over the menu.
+  const handleMenuOpenChange = (rowKey, next) => {
+    setOpenMenuKey(next ? rowKey : null);
+    setPreview(null);
+  };
 
-  const deckCardIds = useMemo(() => new Set(deck.cards.map((c) => c.cardId)), [deck.cards]);
+  // Mouse events stop firing once a drag starts, so the hover preview would
+  // otherwise hang around under the cursor for the whole drag.
+  const handleDragging = (entry) => {
+    if (entry) setPreview(null);
+    setDragging(entry);
+  };
+
+  const commitNewColumn = () => {
+    const name = (newColumn || "").trim();
+    setNewColumn(null);
+    if (name && name !== UNCATEGORIZED && !deck.categories.includes(name)) onAddColumn(name);
+  };
+
+  const handleDropOnBoard = (board) => {
+    setBoardDropTarget(null);
+    if (dragging && dragging.board !== board) onMoveBoard(dragging.cardId, dragging.board);
+    setDragging(null);
+  };
+
+  const rowProps = {
+    onSetQty: (entry, qty) => onSetQty(entry.cardId, entry.board, qty),
+    onRemove: (entry) => onRemove(entry.cardId, entry.board),
+    onMoveBoard: (entry) => onMoveBoard(entry.cardId, entry.board),
+    onSetCategory: (entry, category) => onSetCategory(entry.cardId, entry.board, category),
+    onOpenDetail: onOpenCardDetail,
+    onPreview: showPreview,
+    onPreviewEnd: hidePreview,
+  };
+
+  const boardTab = (board, label, count) => (
+    <button
+      type="button"
+      className={`dt-board-tab${activeBoard === board ? " active" : ""}${boardDropTarget === board ? " dt-board-tab-drop" : ""}`}
+      onClick={() => setActiveBoard(board)}
+      onDragOver={dragEnabled && dragging && dragging.board !== board
+        ? (e) => { e.preventDefault(); setBoardDropTarget(board); } : undefined}
+      onDragLeave={() => setBoardDropTarget((t) => (t === board ? null : t))}
+      onDrop={dragEnabled && dragging ? (e) => { e.preventDefault(); handleDropOnBoard(board); } : undefined}
+    >
+      {label} <span className="dt-board-tab-count">{count}</span>
+    </button>
+  );
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
-        <button className="dt-btn dt-btn-icon" onClick={onBack}><ArrowLeft size={16} /></button>
+      <div className="dt-deck-header">
+        <button className="dt-btn dt-btn-icon" onClick={onBack} title="Back to decks"><ArrowLeft size={16} /></button>
         <input
-          className="dt-brand" value={nameDraft}
+          className="dt-brand dt-deck-name" value={nameDraft}
           onChange={(e) => setNameDraft(e.target.value)}
           onBlur={() => { if (nameDraft.trim() && nameDraft !== deck.name) onRename(nameDraft.trim()); }}
-          style={{ fontSize: 22, background: "transparent", border: "none", color: "var(--text)", borderBottom: "1px solid transparent", outlineOffset: 2 }}
-          onFocus={(e) => (e.target.style.borderBottomColor = "var(--border)")}
         />
         <span className="dt-chip">{deck.format}</span>
+        <span className="dt-deck-total">{mainCount} / {deck.targetSize}</span>
+        <button type="button" className="dt-btn dt-btn-primary" onClick={() => setAddOpen(true)}>
+          <Plus size={14} /> Add cards
+        </button>
       </div>
-      <p style={{ fontSize: 13, color: "var(--text-dim)", margin: "0 0 18px 40px" }}>{totalCount} card{totalCount === 1 ? "" : "s"}</p>
 
-      <div className="dt-deck-cols" style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 20, alignItems: "start" }}>
-        <div>
-          <FilterBar filters={filters} setFilters={setFilters} allTags={allTags} />
-          <div className="dt-scroll" style={{ maxHeight: 560, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, paddingRight: 4 }}>
-            {filteredCards.length === 0 && (
-              <div className="dt-panel" style={{ padding: 24, textAlign: "center", color: "var(--text-dim)", fontSize: 14 }}>
-                No cards in the pool match these filters.
-              </div>
-            )}
-            {filteredCards.map((c) => {
-              const inDeck = deck.cards.find((e) => e.cardId === c.id);
-              return (
-                <div key={c.id} className="dt-card-row">
-                  <div style={{ width: 36, height: 50, borderRadius: 4, overflow: "hidden", background: "var(--panel2)", flexShrink: 0, cursor: "pointer" }} onClick={() => onOpenCardDetail(c)}>
-                    {c.thumb_url ? <img src={c.thumb_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => onOpenCardDetail(c)}>
-                    <div style={{ fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{c.type}</div>
-                  </div>
-                  <ManaPips colors={c.colors} size={16} />
-                  {inDeck && deck.format !== "Cube" && (
-                    <>
-                      <button className="dt-btn dt-btn-icon" onClick={() => onDecrement(c.id)}><Minus size={13} /></button>
-                      <span style={{ minWidth: 16, textAlign: "center", fontSize: 13 }}>{inDeck.qty}</span>
-                    </>
-                  )}
-                  <button
-                    className="dt-btn dt-btn-icon" onClick={() => onAdd(c.id)}
-                    disabled={deck.format === "Cube" && deckCardIds.has(c.id)}
-                  >
-                    <Plus size={13} />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+      <div className="dt-deck-toolbar">
+        <div className="dt-board-tabs">
+          {boardTab("main", "Deck", mainCount)}
+          {boardTab("maybe", "Maybe board", maybeCount)}
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 16, position: "sticky", top: 12 }}>
-          <div className="dt-panel" style={{ padding: 16 }}>
-            <p className="dt-brand" style={{ fontSize: 14, margin: "0 0 10px" }}>Mana curve</p>
-            <ManaCurveChart data={curveData} />
-          </div>
-          <div className="dt-panel" style={{ padding: 16 }}>
-            <p className="dt-brand" style={{ fontSize: 14, margin: "0 0 10px" }}>Color balance</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {MANA_COLORS.map((c) => (
-                <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span className="dt-pip" style={{ background: c.hex, width: 18, height: 18, fontSize: 9 }}>{c.key}</span>
-                  <div style={{ flex: 1, background: "var(--panel2)", borderRadius: 4, height: 8, overflow: "hidden" }}>
-                    <div style={{ width: `${totalCount ? (colorCounts[c.key] / totalCount) * 100 : 0}%`, background: c.hex, height: "100%" }} />
-                  </div>
-                  <span style={{ fontSize: 12, color: "var(--text-dim)", width: 18, textAlign: "right" }}>{colorCounts[c.key]}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="dt-panel" style={{ padding: 16 }}>
-            <p className="dt-brand" style={{ fontSize: 14, margin: "0 0 10px" }}>Build</p>
-            {deck.cards.length === 0 ? (
-              <p style={{ fontSize: 13, color: "var(--text-dim)", margin: 0 }}>Add cards from the pool on the left to start building.</p>
+        <div className="dt-toolbar-right">
+          <label className="dt-toolbar-field">
+            Group
+            <select className="dt-select" value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
+              {GROUP_MODES.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+            </select>
+          </label>
+          <label className="dt-toolbar-field">
+            Sort
+            <select className="dt-select" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+              {SORT_MODES.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+            </select>
+          </label>
+          <label className="dt-toolbar-field">
+            View as
+            <select className="dt-select" value={viewMode} onChange={(e) => setViewMode(e.target.value)}>
+              {VIEW_MODES.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+            </select>
+          </label>
+          {groupBy === "category" && (
+            newColumn === null ? (
+              <button type="button" className="dt-btn" onClick={() => setNewColumn("")}>
+                <Plus size={13} /> New column
+              </button>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                {grouped.map((g) => (
-                  <div key={g.type}>
-                    <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "0 0 6px", textTransform: "uppercase", letterSpacing: ".04em" }}>
-                      {g.type} · {g.entries.reduce((a, e) => a + e.qty, 0)}
-                    </p>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      {g.entries.map((e) => (
-                        <div key={e.cardId} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                          <span style={{ color: "var(--text-dim)", minWidth: 18 }}>{e.qty}×</span>
-                          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: e.card ? "var(--text)" : "var(--text-dim)", fontStyle: e.card ? "normal" : "italic" }}>
-                            {e.card ? e.card.name : "Removed card"}
-                          </span>
-                          <button className="dt-btn dt-btn-icon" onClick={() => onRemove(e.cardId)}><X size={12} /></button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+              <input
+                autoFocus className="dt-input dt-new-column" placeholder="Column name"
+                value={newColumn} onChange={(e) => setNewColumn(e.target.value)}
+                onBlur={commitNewColumn}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitNewColumn();
+                  if (e.key === "Escape") setNewColumn(null);
+                }}
+              />
+            )
+          )}
         </div>
       </div>
+
+      {activeBoard === "maybe" && (
+        <p className="dt-maybe-note">
+          A scratchpad for cards you are considering — nothing here counts toward deck size or the stats.
+        </p>
+      )}
+
+      <div className="dt-deck-cols">
+        <DeckBoard
+          entries={activeBoard === "main" ? mainEntries : maybeEntries}
+          groupBy={groupBy} sortBy={sortBy} viewMode={viewMode}
+          categories={deck.categories} isCube={isCube}
+          dragEnabled={dragEnabled} dragging={dragging} setDragging={handleDragging}
+          collapsed={boardCollapsed} onToggleCollapse={toggleCollapse}
+          openMenuKey={openMenuKey} onMenuOpenChange={handleMenuOpenChange}
+          onDropOnColumn={(category) => {
+            if (dragging) onSetCategory(dragging.cardId, dragging.board, category);
+            setDragging(null);
+          }}
+          onRenameColumn={onRenameColumn}
+          onDeleteColumn={onDeleteColumn}
+          emptyMessage={activeBoard === "main"
+            ? "No cards yet — use “Add cards” to pull from the pool."
+            : "Nothing on the maybe board yet."}
+          {...rowProps}
+        />
+
+        <div className="dt-deck-rail">
+          <DeckStats entries={mainEntries} targetSize={deck.targetSize} onTargetChange={onSetTarget} />
+        </div>
+      </div>
+
+      {addOpen && (
+        <CardSearchModal
+          cards={cards} entriesByKey={entriesByKey} isCube={isCube}
+          onAdd={onAddCard} onClose={() => setAddOpen(false)}
+          onOpenDetail={onOpenCardDetail} onPreview={showPreview} onPreviewEnd={hidePreview}
+        />
+      )}
+
+      <CardPreview preview={preview} />
     </div>
   );
 }

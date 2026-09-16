@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Upload, X, Sparkles } from "lucide-react";
+import { Upload, X, Sparkles, Info } from "lucide-react";
 import Modal from "./Modal";
 import { CARD_TYPES, RARITIES, MANA_COLORS } from "../constants";
+import { isValidManaCost, manaCostCmc, manaCostColors } from "../lib/mana";
 import { resizeImageFile } from "../lib/image";
 import { uploadImageToR2 } from "../lib/r2";
 import { scanCardImage, parseOcrResults } from "../lib/ocr";
@@ -12,21 +13,6 @@ const scanLabels = {
   rulesText: "Reading the rules text…",
   pt: "Reading power/toughness…",
 };
-
-// Letters allowed in a mana cost, plus at most one contiguous run of digits
-// (e.g. "2WU" and "WU2" are valid, "2W3" is not — two separate number groups).
-const MANA_COST_RE = /^[WUBRGX]*(\d+)?[WUBRGX]*$/;
-
-const isValidManaCost = (value) => MANA_COST_RE.test(value);
-
-const computeCmc = (value) => {
-  const match = value.match(/\d+/);
-  const numeric = match ? parseInt(match[0], 10) : 0;
-  const symbolPips = (value.match(/[WUBRG]/g) || []).length;
-  return numeric + symbolPips;
-};
-
-const computeColors = (value) => MANA_COLORS.map((c) => c.key).filter((key) => value.includes(key));
 
 export default function CardForm({ initial, profileName, existingCards, onCancel, onSave }) {
   const [form, setForm] = useState(() => ({
@@ -67,8 +53,8 @@ export default function CardForm({ initial, profileName, existingCards, onCancel
     setForm((f) => ({
       ...f,
       manaCost,
-      cmc: isValidManaCost(manaCost) ? computeCmc(manaCost) : f.cmc,
-      colors: isValidManaCost(manaCost) ? computeColors(manaCost) : f.colors,
+      cmc: isValidManaCost(manaCost) ? manaCostCmc(manaCost) : f.cmc,
+      colors: isValidManaCost(manaCost) ? manaCostColors(manaCost) : f.colors,
     }));
   };
 
@@ -199,11 +185,18 @@ export default function CardForm({ initial, profileName, existingCards, onCancel
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 90px", gap: 10 }}>
               <div>
-                <label style={{ fontSize: 12, color: "var(--text-dim)", display: "block", marginBottom: 4 }}>Mana cost</label>
-                <input className="dt-input" value={form.manaCost} onChange={handleManaCostChange} placeholder="e.g. 2WU" />
+                <label style={{ fontSize: 12, color: "var(--text-dim)", display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}>
+                  Mana cost
+                  <Info
+                    size={12}
+                    style={{ cursor: "help" }}
+                    title={'Use W, U, B, R, G, X and a single number, e.g. "2WU". For hybrid mana, separate two colors with a slash, e.g. "W/B" — it counts as 1 pip but gives the card both color identities.'}
+                  />
+                </label>
+                <input className="dt-input" value={form.manaCost} onChange={handleManaCostChange} placeholder="e.g. 2W/BU" />
                 {!validManaCost && (
                   <p style={{ fontSize: 11, lineHeight: 1.4, marginTop: 4, color: "#E9A79B" }}>
-                    Use only W, U, B, R, G, X and a single number, e.g. "2WU".
+                    Use only W, U, B, R, G, X, a single number, and hybrid pips like "W/B", e.g. "2W/BU".
                   </p>
                 )}
               </div>

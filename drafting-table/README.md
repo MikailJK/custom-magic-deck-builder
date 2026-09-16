@@ -12,6 +12,8 @@ Cloudflare R2 (image storage), deployed on Vercel.
 1. Go to [supabase.com](https://supabase.com), create a free account and a new project.
 2. In the SQL Editor, run the contents of `supabase/schema.sql` once. This creates
    the `cards`, `decks`, and `deck_cards` tables with Row Level Security enabled.
+   If your project predates a migration in `supabase/migrations/`, run those too,
+   in filename order — they are idempotent, so re-running one is harmless.
 3. In **Settings > API**, copy your **Project URL** and **anon public key** —
    you'll need these for `.env`.
 4. In **Authentication > Providers**, email/password sign-up is on by default.

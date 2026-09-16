@@ -58,6 +58,8 @@ body {
 .dt-chip { background: var(--panel2); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; font-size: 12px; color: var(--text-dim); }
 
 .dt-pip { width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; color: #211a0d; border: 1px solid rgba(0,0,0,.25); flex-shrink: 0; }
+.dt-manacost { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.dt-pip-generic { background: var(--text-dim); }
 .dt-pip-toggle { width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; cursor: pointer; border: 1.5px solid var(--border); color: var(--text-dim); background: transparent; }
 
 .dt-card-tile { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; cursor: pointer; transition: border-color .15s ease, transform .15s ease; display: flex; flex-direction: column; }
@@ -77,9 +79,191 @@ body {
 .dt-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
 .dt-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
 
+.dt-main { padding: 24px; max-width: 1600px; margin: 0 auto; }
+
+.dt-banner { background: #2e1d19; border: 1px solid #5a2e27; color: #e9a79b; border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 16px; }
+
+/* --- Deck editor: header + toolbar --- */
+
+.dt-deck-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.dt-deck-name { font-size: 22px; background: transparent; border: none; color: var(--text); border-bottom: 1px solid transparent; padding: 2px 0; min-width: 160px; flex: 1 1 200px; }
+.dt-deck-name:focus { border-bottom-color: var(--border); outline-offset: 4px; }
+.dt-deck-total { font-size: 13px; color: var(--text-dim); font-variant-numeric: tabular-nums; margin-left: auto; }
+
+.dt-deck-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between; margin-bottom: 12px; }
+.dt-board-tabs { display: flex; gap: 4px; background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
+.dt-board-tab { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: 500; font-family: inherit; cursor: pointer; border: 1px solid transparent; background: transparent; color: var(--text-dim); }
+.dt-board-tab.active { background: var(--panel); color: var(--text); border-color: var(--border); }
+.dt-board-tab-drop { border-color: var(--accent); color: var(--accent); }
+.dt-board-tab-count { font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+.dt-toolbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dt-toolbar-field { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+.dt-toolbar-field .dt-select { width: auto; padding: 6px 8px; font-size: 13px; }
+.dt-new-column { width: 150px; padding: 6px 8px; font-size: 13px; }
+
+.dt-maybe-note { font-size: 12px; color: var(--text-dim); margin: 0 0 12px; font-style: italic; }
+
+/* --- Deck editor: layout --- */
+
+.dt-deck-cols { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+.dt-deck-rail { position: sticky; top: 12px; }
+
+.dt-board-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; align-items: start; }
+/* Stacked cards fill their column, so the column width is the card size. Text
+   rows can't go this narrow — they have to fit the stepper and the controls. */
+.dt-board-grid.is-stacks { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+.dt-board-empty { padding: 28px; text-align: center; color: var(--text-dim); font-size: 14px; }
+
+/* --- Deck editor: groups --- */
+
+.dt-group { padding: 10px; }
+.dt-group-drop { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.dt-group-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.dt-group-toggle { display: inline-flex; padding: 2px; border: none; background: transparent; color: var(--text-dim); cursor: pointer; }
+.dt-group-title { flex: 1; min-width: 0; text-align: left; background: transparent; border: none; padding: 0; font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dt-group-title:not(:disabled) { cursor: pointer; }
+.dt-group-title:not(:disabled):hover { color: var(--text); }
+.dt-group-rename { flex: 1; min-width: 0; padding: 3px 6px; font-size: 12px; }
+.dt-group-count { font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.dt-group-body { display: flex; flex-direction: column; gap: 5px; }
+.dt-group-placeholder { margin: 0; padding: 12px 4px; font-size: 12px; color: var(--text-dim); text-align: center; font-style: italic; }
+
+/* --- Deck editor: card rows --- */
+
+.dt-deck-row { display: flex; align-items: center; gap: 7px; padding: 6px; border: 1px solid var(--border); border-radius: 7px; background: var(--panel2); }
+.dt-deck-row:hover { border-color: var(--accent-dim); }
+.dt-deck-row[draggable="true"] { cursor: grab; }
+.dt-deck-row[draggable="true"]:active { cursor: grabbing; }
+.dt-grip { color: var(--text-dim); flex-shrink: 0; }
+
+.dt-card-thumb { width: 28px; height: 39px; border-radius: 3px; overflow: hidden; background: var(--panel); border: 1px solid var(--border); padding: 0; flex-shrink: 0; cursor: pointer; }
+.dt-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.dt-deck-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.dt-deck-row-top { display: flex; align-items: center; gap: 6px; }
+.dt-deck-row-name { flex: 1; min-width: 0; text-align: left; background: transparent; border: none; padding: 0; font-family: inherit; font-size: 13px; color: var(--text); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dt-deck-row-name:hover { color: var(--accent); }
+.dt-deck-row-meta { display: flex; align-items: center; gap: 4px; }
+.dt-deck-row-cost { flex: 1; min-width: 0; display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-dim); }
+.dt-deck-row-type { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dt-deck-row-select { width: auto; max-width: 96px; padding: 2px 4px; font-size: 11px; }
+.dt-row-action { padding: 4px; color: var(--text-dim); }
+.dt-row-action:hover { color: var(--text); }
+
+/* --- Row action menu --- */
+
+.dt-menu { position: relative; flex-shrink: 0; }
+.dt-menu-trigger { display: inline-flex; align-items: center; gap: 1px; padding: 3px 4px 3px 6px; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.dt-menu-trigger:hover { color: var(--text); }
+.dt-menu-qty { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px; font-size: 12px; color: var(--text-dim); }
+.dt-menu-panel { position: absolute; top: calc(100% + 4px); right: 0; z-index: 40; min-width: 178px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 4px; box-shadow: 0 10px 28px rgba(0,0,0,.5); display: flex; flex-direction: column; }
+.dt-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 7px 8px; border-radius: 5px; border: none; background: transparent; color: var(--text); font-family: inherit; font-size: 12px; cursor: pointer; }
+.dt-menu-item:hover:not(:disabled) { background: var(--panel2); }
+.dt-menu-item:disabled { opacity: .4; cursor: default; }
+.dt-menu-item-danger { color: #e9a79b; }
+.dt-menu-sep { height: 1px; background: var(--border); margin: 4px 2px; }
+
+/* --- Card art views: grid + stacks --- */
+
+/* Grid needs the full width, so its groups stack as full-width sections. */
+.dt-board-sections { display: flex; flex-direction: column; gap: 12px; }
+.dt-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+
+/* A stacked card is pulled up over the one before it, leaving only its title
+   strip showing. Percentage margins resolve against width, and a 5:7 card is
+   140% of its width tall, so the pull-up is reveal - 140%. Raise --stack-reveal
+   if a custom card frame puts its name lower than a standard frame does. */
+.dt-stack { display: block; --stack-reveal: 22%; }
+.dt-tile-stack { display: block; }
+.dt-tile-stack + .dt-tile-stack { margin-top: calc(var(--stack-reveal) - 140%); }
+
+.dt-tile { position: relative; border-radius: 6px; }
+.dt-tile[draggable="true"] { cursor: grab; }
+.dt-tile[draggable="true"]:active { cursor: grabbing; }
+.dt-tile-img { width: 100%; display: block; aspect-ratio: 5 / 7; object-fit: cover; border-radius: 6px; cursor: pointer; background: var(--panel2); }
+.dt-tile-fallback { aspect-ratio: 5 / 7; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; padding: 10px; cursor: pointer; background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; color: var(--text); }
+.dt-tile-fallback-meta { font-size: 10px; color: var(--text-dim); }
+
+.dt-tile-bar { position: absolute; display: flex; gap: 4px; pointer-events: none; }
+/* The auto margin, rather than space-between, keeps the controls pinned to the
+   bottom whether or not the quantity badge above them is rendered. */
+.dt-tile-grid .dt-tile-bar { inset: 0; flex-direction: column; align-items: flex-end; padding: 5px; }
+.dt-tile-grid .dt-tile-actions { margin-top: auto; }
+/* Divided by 1.5 rather than 1.4 so the bar stays inside the visible strip
+   instead of slipping under the next card. */
+.dt-tile-stack .dt-tile-bar { top: 0; left: 0; right: 0; height: calc(var(--stack-reveal) / 1.5); flex-direction: row; align-items: center; justify-content: flex-end; padding: 0 5px; }
+
+.dt-tile-qty { background: rgba(15,13,10,.86); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+.dt-tile-actions { display: flex; align-items: center; gap: 2px; max-width: 100%; flex-wrap: wrap; justify-content: flex-end; background: rgba(15,13,10,.92); border: 1px solid var(--border); border-radius: 6px; padding: 2px; opacity: 0; transition: opacity .12s ease; }
+.dt-tile:hover .dt-tile-actions { opacity: 1; pointer-events: auto; }
+.dt-tile-actions:focus-within { opacity: 1; pointer-events: auto; }
+.dt-tile-select { width: auto; max-width: 96px; padding: 2px 4px; font-size: 11px; }
+
+/* --- Quantity stepper --- */
+
+.dt-qty-btn { padding: 3px; border-radius: 4px; }
+.dt-qty-value { width: 24px; height: 22px; text-align: center; font-family: inherit; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: pointer; padding: 0; }
+.dt-qty-value:hover { border-color: var(--border); }
+.dt-qty-input { background: var(--panel); border-color: var(--accent-dim); cursor: text; }
+
+/* --- Stats rail --- */
+
+.dt-stats { display: flex; flex-direction: column; gap: 12px; }
+.dt-stat-panel { padding: 14px; }
+.dt-stat-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.dt-stat-title { font-size: 13px; margin: 0 0 8px; }
+.dt-stat-head .dt-stat-title { margin: 0; }
+.dt-stat-headline { font-size: 17px; font-variant-numeric: tabular-nums; display: inline-flex; align-items: baseline; }
+.dt-stat-headline-dim { color: var(--text-dim); }
+.dt-target-input { width: 38px; padding: 1px 4px; font-size: 15px; text-align: center; background: var(--panel2); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-family: inherit; font-variant-numeric: tabular-nums; }
+
+.dt-progress { height: 7px; border-radius: 4px; background: var(--panel2); overflow: hidden; }
+.dt-progress-fill { height: 100%; background: var(--accent); transition: width .2s ease; }
+.dt-stat-note { font-size: 11px; color: var(--text-dim); margin: 8px 0 0; }
+
+.dt-bar-list { display: flex; flex-direction: column; gap: 6px; }
+.dt-bar-row { display: flex; align-items: center; gap: 8px; }
+.dt-bar-track { flex: 1; min-width: 0; height: 8px; border-radius: 4px; background: var(--panel2); overflow: hidden; }
+.dt-bar-fill { height: 100%; }
+.dt-bar-value { width: 22px; text-align: right; font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.dt-type-label { width: 78px; font-size: 11px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- Add-cards modal --- */
+
+/* Bounded like the card form so the results scroll instead of the page. */
+.dt-addcards { display: flex; flex-direction: column; max-height: 88vh; }
+.dt-addcards-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 18px 22px; border-bottom: 1px solid var(--border); }
+.dt-addcards-title { font-size: 19px; margin: 0; }
+.dt-addcards-controls { padding: 14px 22px; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--border); }
+.dt-addcards-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dt-addcards-type { width: auto; padding: 6px 8px; font-size: 13px; }
+.dt-addcards-pips { display: flex; gap: 4px; }
+.dt-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); cursor: pointer; }
+.dt-check input { accent-color: var(--accent); cursor: pointer; margin: 0; }
+
+.dt-search-wrap { position: relative; }
+.dt-search-icon { position: absolute; left: 10px; top: 10px; color: var(--text-dim); }
+.dt-search-input { padding-left: 32px; }
+
+.dt-segmented { display: flex; gap: 3px; background: var(--panel2); border: 1px solid var(--border); border-radius: 7px; padding: 3px; }
+.dt-segment { flex: 1; padding: 6px 10px; border-radius: 5px; font-size: 12px; font-weight: 500; font-family: inherit; cursor: pointer; border: none; background: transparent; color: var(--text-dim); }
+.dt-segment.active { background: var(--accent); color: #211a0d; }
+
+.dt-addcards-results { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 22px 18px; display: flex; flex-direction: column; gap: 7px; }
+.dt-addcards-empty { font-size: 13px; color: var(--text-dim); text-align: center; padding: 24px 0; margin: 0; }
+.dt-addcards-row { display: flex; align-items: center; gap: 9px; padding: 7px; border: 1px solid var(--border); border-radius: 7px; background: var(--panel2); }
+.dt-addcards-row:hover { border-color: var(--accent-dim); }
+.dt-addcards-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.dt-in-deck { font-size: 10px; color: var(--accent); }
+.dt-add-qty { width: auto; padding: 4px 6px; font-size: 12px; }
+.dt-add-btn { padding: 6px 10px; font-size: 12px; flex-shrink: 0; }
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
 @media (max-width: 900px) {
-  .dt-deck-cols { grid-template-columns: 1fr !important; }
+  .dt-deck-cols { grid-template-columns: 1fr; }
+  .dt-deck-rail { position: static; }
+  .dt-deck-total { margin-left: 0; }
 }

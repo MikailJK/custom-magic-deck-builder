@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabaseClient";
 import { emptyFilters } from "./constants";
 import * as db from "./lib/db";
@@ -16,6 +16,7 @@ export default function App() {
 
   const [cards, setCards] = useState([]);
   const [decks, setDecks] = useState([]);
+  const [loadError, setLoadError] = useState("");
 
   const [tab, setTab] = useState("pool");
   const [filters, setFilters] = useState(emptyFilters);
@@ -27,6 +28,10 @@ export default function App() {
   const [activeDeckId, setActiveDeckId] = useState(null);
   const [activeDeck, setActiveDeck] = useState(null);
   const [deckLoading, setDeckLoading] = useState(false);
+  // Deck edits are applied optimistically and can land faster than React
+  // re-renders (holding Add in the search drawer), so reads go through a ref
+  // that every handler updates synchronously before it awaits the write.
+  const activeDeckRef = useRef(null);
 
   // Auth session
   useEffect(() => {
@@ -35,18 +40,25 @@ export default function App() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  // Load shared data once signed in
+  // Load shared data once signed in. Cards and decks are settled independently
+  // so a failure on one does not leave the other silently empty.
   useEffect(() => {
     if (!session) return;
     (async () => {
       setBooting(true);
-      try {
-        const [cardRows, deckRows] = await Promise.all([db.fetchCards(), db.fetchDecks()]);
-        setCards(cardRows);
-        setDecks(deckRows);
-      } catch (e) {
-        console.error("Failed to load data", e);
-      }
+      const [cardResult, deckResult] = await Promise.allSettled([db.fetchCards(), db.fetchDecks()]);
+      if (cardResult.status === "fulfilled") setCards(cardResult.value);
+      if (deckResult.status === "fulfilled") setDecks(deckResult.value);
+
+      const failures = [];
+      if (cardResult.status === "rejected") failures.push(["the card pool", cardResult.reason]);
+      if (deckResult.status === "rejected") failures.push(["your decks", deckResult.reason]);
+      failures.forEach(([what, reason]) => console.error(`Failed to load ${what}`, reason));
+      setLoadError(
+        failures.length
+          ? `Couldn't load ${failures.map(([what]) => what).join(" or ")}: ${failures[0][1]?.message || "unknown error"}`
+          : ""
+      );
       setBooting(false);
     })();
   }, [session]);
@@ -115,58 +127,155 @@ export default function App() {
     return deck;
   }
 
+  function setDeck(deck) {
+    activeDeckRef.current = deck;
+    setActiveDeck(deck);
+  }
+
+  function applyDeck(updater) {
+    setDeck(updater(activeDeckRef.current));
+  }
+
+  // Optimistic edits would silently drift from the database if a write failed,
+  // so a failure pulls the deck back from the server instead.
+  async function commitDeck(write) {
+    try {
+      await write();
+      refreshDecks();
+    } catch (e) {
+      console.error("Deck update failed", e);
+      const id = activeDeckRef.current?.id;
+      if (id) setDeck(await db.fetchDeck(id));
+    }
+  }
+
   async function openDeck(id) {
     setActiveDeckId(id);
     setDeckLoading(true);
     try {
-      setActiveDeck(await db.fetchDeck(id));
+      setDeck(await db.fetchDeck(id));
     } finally {
       setDeckLoading(false);
     }
   }
 
+  function closeDeck() {
+    setActiveDeckId(null);
+    setDeck(null);
+  }
+
   async function handleDeleteDeck(id) {
     await db.deleteDeck(id);
     await refreshDecks();
-    if (activeDeckId === id) { setActiveDeckId(null); setActiveDeck(null); }
+    if (activeDeckId === id) closeDeck();
   }
 
   async function handleRenameDeck(name) {
-    await db.renameDeck(activeDeck.id, name);
-    setActiveDeck((d) => ({ ...d, name }));
-    await refreshDecks();
+    applyDeck((d) => ({ ...d, name }));
+    await commitDeck(() => db.renameDeck(activeDeckRef.current.id, name));
   }
 
-  async function handleAddToDeck(cardId) {
-    const existing = activeDeck.cards.find((c) => c.cardId === cardId);
-    const nextQty = activeDeck.format === "Cube" ? 1 : Math.min(99, (existing?.qty || 0) + 1);
-    if (activeDeck.format === "Cube" && existing) return;
-    await db.setDeckCardQty(activeDeck.id, cardId, nextQty);
-    setActiveDeck((d) => {
-      const cards2 = existing
-        ? d.cards.map((c) => (c.cardId === cardId ? { ...c, qty: nextQty } : c))
-        : [...d.cards, { cardId, qty: nextQty }];
-      return { ...d, cards: cards2 };
-    });
-    refreshDecks();
-  }
+  const findEntry = (deck, cardId, board) =>
+    deck.cards.find((c) => c.cardId === cardId && c.board === board);
 
-  async function handleDecrementDeckCard(cardId) {
-    const existing = activeDeck.cards.find((c) => c.cardId === cardId);
-    if (!existing) return;
-    const nextQty = existing.qty - 1;
-    await db.setDeckCardQty(activeDeck.id, cardId, nextQty);
-    setActiveDeck((d) => ({
+  async function handleSetDeckCardQty(cardId, board, qty) {
+    const deck = activeDeckRef.current;
+    const capped = deck.format === "Cube" ? Math.min(1, qty) : Math.min(99, qty);
+    const existing = findEntry(deck, cardId, board);
+    applyDeck((d) => ({
       ...d,
-      cards: nextQty <= 0 ? d.cards.filter((c) => c.cardId !== cardId) : d.cards.map((c) => (c.cardId === cardId ? { ...c, qty: nextQty } : c)),
+      cards: capped <= 0
+        ? d.cards.filter((c) => !(c.cardId === cardId && c.board === board))
+        : existing
+          ? d.cards.map((c) => (c.cardId === cardId && c.board === board ? { ...c, qty: capped } : c))
+          : [...d.cards, { cardId, qty: capped, board, category: null }],
     }));
-    refreshDecks();
+    await commitDeck(() => db.setDeckCardQty(deck.id, cardId, board, capped));
   }
 
-  async function handleRemoveFromDeck(cardId) {
-    await db.setDeckCardQty(activeDeck.id, cardId, 0);
-    setActiveDeck((d) => ({ ...d, cards: d.cards.filter((c) => c.cardId !== cardId) }));
-    refreshDecks();
+  async function handleAddToDeck(cardId, board = "main", qty = 1) {
+    const deck = activeDeckRef.current;
+    const existing = findEntry(deck, cardId, board);
+    if (deck.format === "Cube" && existing) return;
+    const nextQty = deck.format === "Cube" ? 1 : Math.min(99, (existing?.qty || 0) + qty);
+    await handleSetDeckCardQty(cardId, board, nextQty);
+  }
+
+  async function handleRemoveFromDeck(cardId, board = "main") {
+    await handleSetDeckCardQty(cardId, board, 0);
+  }
+
+  async function handleMoveDeckCardBoard(cardId, fromBoard) {
+    const deck = activeDeckRef.current;
+    const toBoard = fromBoard === "main" ? "maybe" : "main";
+    const source = findEntry(deck, cardId, fromBoard);
+    if (!source) return;
+    const target = findEntry(deck, cardId, toBoard);
+    const mergedQty = deck.format === "Cube" ? 1 : Math.min(99, (target?.qty || 0) + source.qty);
+    const category = target?.category ?? source.category ?? null;
+    applyDeck((d) => ({
+      ...d,
+      cards: [
+        ...d.cards.filter((c) => c.cardId !== cardId || (c.board !== fromBoard && c.board !== toBoard)),
+        { cardId, qty: mergedQty, board: toBoard, category },
+      ],
+    }));
+    await commitDeck(() => db.moveDeckCard(deck.id, cardId, fromBoard, toBoard, mergedQty, category));
+  }
+
+  async function handleSetDeckCardCategory(cardId, board, category) {
+    const deck = activeDeckRef.current;
+    applyDeck((d) => ({
+      ...d,
+      cards: d.cards.map((c) => (c.cardId === cardId && c.board === board ? { ...c, category } : c)),
+    }));
+    await commitDeck(() => db.setDeckCardCategory(deck.id, cardId, board, category));
+  }
+
+  async function handleSetDeckTarget(targetSize) {
+    const deck = activeDeckRef.current;
+    applyDeck((d) => ({ ...d, targetSize }));
+    await commitDeck(() => db.updateDeck(deck.id, { target_size: targetSize }));
+  }
+
+  async function handleAddColumn(name) {
+    const deck = activeDeckRef.current;
+    const categories = [...deck.categories, name];
+    applyDeck((d) => ({ ...d, categories }));
+    await commitDeck(() => db.updateDeck(deck.id, { categories }));
+  }
+
+  async function handleRenameColumn(from, to) {
+    const deck = activeDeckRef.current;
+    if (deck.categories.includes(to)) return;
+    const categories = deck.categories.map((c) => (c === from ? to : c));
+    applyDeck((d) => ({
+      ...d,
+      categories,
+      cards: d.cards.map((c) => (c.category === from ? { ...c, category: to } : c)),
+    }));
+    await commitDeck(async () => {
+      await db.renameDeckCategory(deck.id, from, to);
+      await db.updateDeck(deck.id, { categories });
+    });
+  }
+
+  async function handleDeleteColumn(name) {
+    const deck = activeDeckRef.current;
+    const held = deck.cards.filter((c) => c.category === name).length;
+    if (held > 0 && !window.confirm(`Delete the "${name}" column? Its ${held} card${held === 1 ? "" : "s"} stay in the deck and become uncategorized.`)) {
+      return;
+    }
+    const categories = deck.categories.filter((c) => c !== name);
+    applyDeck((d) => ({
+      ...d,
+      categories,
+      cards: d.cards.map((c) => (c.category === name ? { ...c, category: null } : c)),
+    }));
+    await commitDeck(async () => {
+      await db.clearDeckCategory(deck.id, name);
+      await db.updateDeck(deck.id, { categories });
+    });
   }
 
   if (session === undefined) {
@@ -182,7 +291,8 @@ export default function App() {
   return (
     <div>
       <Header tab={tab} setTab={setTab} profileName={profileName} />
-      <main style={{ padding: 24, maxWidth: 1200, margin: "0 auto" }}>
+      <main className="dt-main">
+        {loadError && <div className="dt-banner">{loadError}</div>}
         {tab === "pool" && (
           <PoolView
             filters={filters} setFilters={setFilters} cards={filteredCards} allTags={allTags}
@@ -196,11 +306,12 @@ export default function App() {
         {tab === "decks" && activeDeckId && (
           deckLoading || !activeDeck ? <p className="dt-loading">Opening deck…</p> : (
             <DeckEditor
-              deck={activeDeck} cardsById={cardsById}
-              filters={filters} setFilters={setFilters} allTags={allTags} filteredCards={filteredCards}
-              onAdd={handleAddToDeck} onDecrement={handleDecrementDeckCard} onRemove={handleRemoveFromDeck}
-              onRename={handleRenameDeck}
-              onBack={() => { setActiveDeckId(null); setActiveDeck(null); }}
+              deck={activeDeck} cards={cards} cardsById={cardsById}
+              onAddCard={handleAddToDeck} onSetQty={handleSetDeckCardQty} onRemove={handleRemoveFromDeck}
+              onMoveBoard={handleMoveDeckCardBoard} onSetCategory={handleSetDeckCardCategory}
+              onRename={handleRenameDeck} onSetTarget={handleSetDeckTarget}
+              onAddColumn={handleAddColumn} onRenameColumn={handleRenameColumn} onDeleteColumn={handleDeleteColumn}
+              onBack={closeDeck}
               onOpenCardDetail={openCardDetail}
             />
           )
