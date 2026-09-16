@@ -23,7 +23,11 @@ create table if not exists cards (
   thumb_url text,
   added_by text default '',
   created_at timestamptz default now(),
-  updated_at timestamptz default now()
+  updated_at timestamptz default now(),
+  -- A double-faced card is two rows cross-linked by linked_card_id; is_front
+  -- decides which one shows up in the pool/search/deck-building.
+  linked_card_id uuid references cards(id) on delete set null,
+  is_front boolean not null default true
 );
 
 create table if not exists decks (
@@ -73,3 +77,4 @@ create policy "authenticated delete deck_cards" on deck_cards for delete using (
 create index if not exists idx_deck_cards_deck on deck_cards(deck_id);
 create index if not exists idx_deck_cards_deck_board on deck_cards(deck_id, board);
 create index if not exists idx_cards_name on cards(name);
+create index if not exists idx_cards_linked_card_id on cards(linked_card_id);

@@ -47,7 +47,7 @@ export default function Auth() {
           <Lock size={18} />
           <span style={{ fontSize: 13, color: "var(--text-dim)" }}>Private table</span>
         </div>
-        <h1 className="dt-brand" style={{ fontSize: 26, margin: "4px 0 18px" }}>The Drafting Table</h1>
+        <h1 className="dt-brand" style={{ fontSize: 26, margin: "4px 0 18px" }}>Barnky Deck</h1>
 
         {mode === "signup" && (
           <div style={{ marginBottom: 10 }}>

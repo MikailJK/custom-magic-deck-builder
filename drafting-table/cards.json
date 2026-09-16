@@ -1,0 +1,11 @@
+[
+  {
+    "name": "Horse with no-name",
+    "mana_cost": "{2}{R}",
+    "type_line": "Creature — Horse",
+    "oracle_text": "Desertwalk (This creature can't be blocked as long as defending player controls a Desert.)\nThis creature can't be named or targeted.",
+    "power": "2",
+    "toughness": "2",
+    "image": "https://storage.googleapis.com/hellscube-images/8009.png"
+  }
+]

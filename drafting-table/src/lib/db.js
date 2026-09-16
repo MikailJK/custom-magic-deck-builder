@@ -4,9 +4,19 @@ import { DEFAULT_TARGET_SIZE } from "../constants";
 // --- Cards ---
 
 export async function fetchCards() {
-  const { data, error } = await supabase.from("cards").select("*").order("name");
+  const { data: fronts, error } = await supabase.from("cards").select("*").eq("is_front", true).order("name");
   if (error) throw error;
-  return data;
+  if (fronts.length === 0) return fronts;
+
+  // Back faces are ordinary cards too, but they never appear in the pool on
+  // their own - fetch them once here and attach each to its front so the
+  // rest of the app (search, grid, deck stats) never has to think about them.
+  const frontIds = fronts.map((c) => c.id);
+  const { data: backs, error: backError } = await supabase
+    .from("cards").select("*").eq("is_front", false).in("linked_card_id", frontIds);
+  if (backError) throw backError;
+  const backByFrontId = Object.fromEntries((backs || []).map((b) => [b.linked_card_id, b]));
+  return fronts.map((c) => (backByFrontId[c.id] ? { ...c, back: backByFrontId[c.id] } : c));
 }
 
 export async function fetchCard(id) {
@@ -15,8 +25,8 @@ export async function fetchCard(id) {
   return data;
 }
 
-export async function saveCard(card, existingId) {
-  const row = {
+function cardToRow(card, extra) {
+  return {
     name: card.name,
     mana_cost: card.manaCost,
     cmc: card.cmc,
@@ -33,18 +43,54 @@ export async function saveCard(card, existingId) {
     thumb_url: card.thumbUrl,
     added_by: card.addedBy,
     updated_at: new Date().toISOString(),
+    ...extra,
   };
+}
+
+export async function saveCard(card, existingId, existingBackId) {
+  const row = cardToRow(card);
+  let front;
   if (existingId) {
     const { data, error } = await supabase.from("cards").update(row).eq("id", existingId).select().single();
     if (error) throw error;
-    return data;
+    front = data;
+  } else {
+    const { data, error } = await supabase.from("cards").insert(row).select().single();
+    if (error) throw error;
+    front = data;
   }
-  const { data, error } = await supabase.from("cards").insert(row).select().single();
-  if (error) throw error;
-  return data;
+
+  if (card.back) {
+    const backRow = cardToRow(card.back, { is_front: false, linked_card_id: front.id });
+    if (existingBackId) {
+      const { data, error } = await supabase.from("cards").update(backRow).eq("id", existingBackId).select().single();
+      if (error) throw error;
+      front.back = data;
+    } else {
+      const { data: back, error } = await supabase.from("cards").insert(backRow).select().single();
+      if (error) throw error;
+      const { error: linkError } = await supabase.from("cards").update({ linked_card_id: back.id }).eq("id", front.id);
+      if (linkError) throw linkError;
+      front.linked_card_id = back.id;
+      front.back = back;
+    }
+  } else if (existingBackId) {
+    // The toggle was turned off - drop the old back face and clear the link.
+    const { error: deleteError } = await supabase.from("cards").delete().eq("id", existingBackId);
+    if (deleteError) throw deleteError;
+    const { error: unlinkError } = await supabase.from("cards").update({ linked_card_id: null }).eq("id", front.id);
+    if (unlinkError) throw unlinkError;
+    front.linked_card_id = null;
+  }
+
+  return front;
 }
 
-export async function deleteCard(id) {
+export async function deleteCard(id, backId) {
+  if (backId) {
+    const { error: backError } = await supabase.from("cards").delete().eq("id", backId);
+    if (backError) throw backError;
+  }
   const { error } = await supabase.from("cards").delete().eq("id", id);
   if (error) throw error;
 }

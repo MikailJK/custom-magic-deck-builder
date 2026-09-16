@@ -12,7 +12,16 @@ function CardTile({ card, onOpen }) {
       </div>
       <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "flex-start" }}>
-          <span className="dt-brand" style={{ fontSize: 14, lineHeight: 1.2 }}>{card.name}</span>
+          <span
+            className="dt-brand"
+            style={{
+              fontSize: 14, lineHeight: 1.2, minWidth: 0,
+              display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+              overflow: "hidden", textOverflow: "ellipsis",
+            }}
+          >
+            {card.name}
+          </span>
           <span style={{ width: 8, height: 8, borderRadius: "50%", background: RARITY_HEX[card.rarity], marginTop: 4, flexShrink: 0 }} title={card.rarity} />
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
