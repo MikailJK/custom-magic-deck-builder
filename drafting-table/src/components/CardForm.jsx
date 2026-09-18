@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Upload, X, Sparkles, Info } from "lucide-react";
 import Modal from "./Modal";
 import { CARD_TYPES, RARITIES, MANA_COLORS } from "../constants";
@@ -85,11 +85,14 @@ function CardFaceFields({
               : (
                 <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, color: "var(--text-dim)", fontSize: 12, textAlign: "center", padding: 8 }}>
                   <Upload size={20} />
-                  <span>{imgBusy ? "Processing…" : "Upload image"}</span>
+                  <span>{imgBusy ? "Processing…" : "Upload or paste image"}</span>
                 </div>
               )}
           </label>
           <input id={imageInputId} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => onFile(e.target.files?.[0])} />
+          <p style={{ fontSize: 11, lineHeight: 1.4, marginTop: 6, color: "var(--text-dim)" }}>
+            Or right-click any image → Copy image, then press Ctrl+V.
+          </p>
 
           {showScan && (
             <>
@@ -260,6 +263,25 @@ export default function CardForm({ initial, profileName, existingCards, onCancel
     await resizeAndStore(file, setBackImageBlobs, (url) => setBack((b) => ({ ...b, previewUrl: url })), setBackImgBusy);
   };
 
+  // "Copy image" puts the bitmap itself on the clipboard, so a paste can feed
+  // the same resize/upload path as a file pick. Text pastes are left alone. The
+  // ref keeps the once-registered listener pointed at this render's handlers.
+  const backRef = useRef(null);
+  const pasteRef = useRef(null);
+  pasteRef.current = (e) => {
+    const item = [...(e.clipboardData?.items || [])].find((i) => i.kind === "file" && i.type.startsWith("image/"));
+    const file = item?.getAsFile();
+    if (!file) return;
+    e.preventDefault();
+    if (isDoubleFaced && backRef.current?.contains(e.target)) handleBackFile(file);
+    else handleFile(file);
+  };
+  useEffect(() => {
+    const onPaste = (e) => pasteRef.current(e);
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, []);
+
   const handleImportFromHellfall = async () => {
     if (!hellfallId.trim()) return;
     setHellfallImport({ status: "loading", message: "Looking up card…" });
@@ -412,7 +434,7 @@ export default function CardForm({ initial, profileName, existingCards, onCancel
         />
 
         {isDoubleFaced && (
-          <>
+          <div ref={backRef}>
             <div style={{ padding: "0 22px 8px" }}>
               <p className="dt-brand" style={{ fontSize: 13, margin: 0, color: "var(--text-dim)" }}>Back face</p>
             </div>
@@ -426,7 +448,7 @@ export default function CardForm({ initial, profileName, existingCards, onCancel
               onFile={handleBackFile}
               showScan={false}
             />
-          </>
+          </div>
         )}
 
         <div style={{ padding: "16px 22px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end", gap: 10 }}>
