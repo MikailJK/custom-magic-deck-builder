@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { Upload, X, Sparkles, Info } from "lucide-react";
 import Modal from "./Modal";
-import { CARD_TYPES, RARITIES, MANA_COLORS } from "../constants";
+import { CARD_TYPES, RARITIES, MANA_COLORS, NEEDS_REVIEW_CMC, needsReview } from "../constants";
 import { isValidManaCost, manaCostCmc, manaCostColors } from "../lib/mana";
 import { resizeImageFile } from "../lib/image";
 import { uploadImageToR2 } from "../lib/r2";
 import { scanCardImage, parseOcrResults } from "../lib/ocr";
 import { fetchHellfallCard, buildImportPatch } from "../lib/hellfall";
+import { isRedditUrl, fetchRedditImage } from "../lib/reddit";
 
 const scanLabels = {
   name: "Reading the name…",
@@ -55,7 +56,7 @@ function faceToSavePayload(face, addedBy) {
 // and again, identically, for the back when the card is double-faced.
 function CardFaceFields({
   idPrefix, value, onChange, duplicateName, validManaCost,
-  imgBusy, onFile, showScan, scanState, onScan,
+  imgBusy, onFile, showScan, scanState, onScan, cmcLocked = false,
 }) {
   const toggleColor = (key) =>
     onChange((f) => ({ ...f, colors: f.colors.includes(key) ? f.colors.filter((c) => c !== key) : [...f.colors, key] }));
@@ -146,7 +147,12 @@ function CardFaceFields({
             </div>
             <div>
               <label style={{ fontSize: 12, color: "var(--text-dim)", display: "block", marginBottom: 4 }}>CMC</label>
-              <input className="dt-input" type="number" min="0" value={value.cmc} onChange={(e) => onChange((f) => ({ ...f, cmc: e.target.value }))} />
+              <input
+                className="dt-input" type="number" min="0"
+                value={cmcLocked ? NEEDS_REVIEW_CMC : value.cmc} disabled={cmcLocked}
+                title={cmcLocked ? "Fixed at 59 while “Needs review” is on" : undefined}
+                onChange={(e) => onChange((f) => ({ ...f, cmc: e.target.value }))}
+              />
             </div>
           </div>
           <div>
@@ -215,6 +221,7 @@ function CardFaceFields({
 export default function CardForm({ initial, profileName, existingCards, onCancel, onSave }) {
   const [form, setForm] = useState(() => emptyFace(initial));
   const [isDoubleFaced, setIsDoubleFaced] = useState(!!initial?.back);
+  const [flagged, setFlagged] = useState(() => needsReview(initial));
   const [back, setBack] = useState(() => emptyFace(initial?.back));
 
   const [imageBlobs, setImageBlobs] = useState(null); // { full, thumb } — only set when a new image is chosen
@@ -282,8 +289,21 @@ export default function CardForm({ initial, profileName, existingCards, onCancel
     return () => document.removeEventListener("paste", onPaste);
   }, []);
 
+  // Only the front image comes from a Reddit post; the other fields are left
+  // for the user (or "Scan card for text") to fill in.
+  const handleImportFromReddit = async () => {
+    setHellfallImport({ status: "loading", message: "Fetching image from Reddit…" });
+    try {
+      await handleFile(await fetchRedditImage(hellfallId));
+      setHellfallImport({ status: "done", message: "Image loaded — fill in the details below, or use “Scan card for text”." });
+    } catch (e) {
+      setHellfallImport({ status: "error", message: e.message || "Couldn't import that image." });
+    }
+  };
+
   const handleImportFromHellfall = async () => {
     if (!hellfallId.trim()) return;
+    if (isRedditUrl(hellfallId)) return handleImportFromReddit();
     setHellfallImport({ status: "loading", message: "Looking up card…" });
     try {
       const card = await fetchHellfallCard(hellfallId);
@@ -314,6 +334,15 @@ export default function CardForm({ initial, profileName, existingCards, onCancel
       });
     } catch (e) {
       setHellfallImport({ status: "error", message: e.message || "Couldn't import that card." });
+    }
+  };
+
+  // Un-flagging a card that was loaded as 59 must not leave the sentinel behind:
+  // fall back to the cost implied by its mana cost.
+  const handleFlaggedChange = (checked) => {
+    setFlagged(checked);
+    if (!checked && Number(form.cmc) === NEEDS_REVIEW_CMC) {
+      setForm((f) => ({ ...f, cmc: isValidManaCost(f.manaCost) ? manaCostCmc(f.manaCost) : 0 }));
     }
   };
 
@@ -368,6 +397,7 @@ export default function CardForm({ initial, profileName, existingCards, onCancel
 
       await onSave({
         ...faceToSavePayload(form, initial?.added_by || profileName),
+        ...(flagged ? { cmc: NEEDS_REVIEW_CMC } : {}),
         imageUrl,
         thumbUrl,
         back: backPayload,
@@ -389,14 +419,14 @@ export default function CardForm({ initial, profileName, existingCards, onCancel
         </div>
 
         <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 6 }}>
-          <label style={{ fontSize: 12, color: "var(--text-dim)" }}>Import from Hellfall (optional)</label>
+          <label style={{ fontSize: 12, color: "var(--text-dim)" }}>Import from Hellfall or a Reddit post (optional)</label>
           <div style={{ display: "flex", gap: 8 }}>
             <input
               className="dt-input"
               style={{ flex: 1 }}
               value={hellfallId}
               onChange={(e) => setHellfallId(e.target.value)}
-              placeholder="Card id or URL, e.g. 6593 or https://hellfall.skeleton.club/card/6593"
+              placeholder="Hellfall id/URL (e.g. 6593) or a Reddit post link"
             />
             <button
               type="button" className="dt-btn"
@@ -413,10 +443,17 @@ export default function CardForm({ initial, profileName, existingCards, onCancel
           )}
         </div>
 
-        <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)" }}>
+        <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", gap: 20, flexWrap: "wrap" }}>
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
             <input type="checkbox" checked={isDoubleFaced} onChange={(e) => setIsDoubleFaced(e.target.checked)} />
             Double-Faced Card
+          </label>
+          <label
+            style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}
+            title="Saves the card with mana value 59 so it can be filtered and reviewed later"
+          >
+            <input type="checkbox" checked={flagged} onChange={(e) => handleFlaggedChange(e.target.checked)} />
+            Needs review
           </label>
         </div>
 
@@ -429,6 +466,7 @@ export default function CardForm({ initial, profileName, existingCards, onCancel
           imgBusy={imgBusy}
           onFile={handleFile}
           showScan
+          cmcLocked={flagged}
           scanState={ocr}
           onScan={handleScan}
         />

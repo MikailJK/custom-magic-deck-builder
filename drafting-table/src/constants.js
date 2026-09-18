@@ -11,7 +11,11 @@ export const TYPE_ORDER = ["Creature", "Planeswalker", "Instant", "Sorcery", "Ar
 export const RARITIES = ["Common", "Uncommon", "Rare", "Mythic"];
 export const RARITY_HEX = { Common: "#9C9689", Uncommon: "#7FA4B0", Rare: "#C8A24B", Mythic: "#C1583B" };
 
-export const emptyFilters = { text: "", colors: [], type: "All", rarity: "All", tag: "All" };
+// A card flagged "Needs review" is stored with this sentinel mana value.
+export const NEEDS_REVIEW_CMC = 59;
+export const needsReview = (card) => card?.cmc === NEEDS_REVIEW_CMC;
+
+export const emptyFilters = { text: "", colors: [], type: "All", rarity: "All", tag: "All", needsReview: false };
 
 export const DEFAULT_TARGET_SIZE = 40;
 export const UNCATEGORIZED = "Uncategorized";

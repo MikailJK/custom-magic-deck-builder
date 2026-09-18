@@ -1,7 +1,7 @@
-import { ImageOff, X, Pencil, Trash2 } from "lucide-react";
+import { ImageOff, X, Pencil, Trash2, Flag } from "lucide-react";
 import Modal from "./Modal";
 import ManaPips from "./ManaPips";
-import { RARITY_HEX } from "../constants";
+import { RARITY_HEX, needsReview } from "../constants";
 
 function FaceBlock({ face, rounded }) {
   return (
@@ -17,6 +17,11 @@ function FaceBlock({ face, rounded }) {
           <ManaPips colors={face.colors} />
           {face.mana_cost && <span style={{ fontSize: 13, color: "var(--text-dim)" }}>{face.mana_cost}</span>}
           <span className="dt-chip" style={{ color: RARITY_HEX[face.rarity] }}>{face.rarity}</span>
+          {needsReview(face) && (
+            <span className="dt-chip" style={{ color: "#E5484D", display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <Flag size={11} fill="#E5484D" />Needs review
+            </span>
+          )}
         </div>
         <p style={{ fontSize: 13, color: "var(--text-dim)", margin: 0 }}>
           {face.type}{face.subtype ? ` — ${face.subtype}` : ""}
