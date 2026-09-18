@@ -1,14 +1,22 @@
-import { ImageOff } from "lucide-react";
+import { ImageOff, Flag } from "lucide-react";
 import ManaPips from "./ManaPips";
-import { RARITY_HEX } from "../constants";
+import { RARITY_HEX, needsReview } from "../constants";
 
 function CardTile({ card, onOpen }) {
   return (
     <div className="dt-card-tile" onClick={() => onOpen(card)}>
-      <div style={{ aspectRatio: "5/7", background: "var(--panel2)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+      <div style={{ position: "relative", aspectRatio: "5/7", background: "var(--panel2)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
         {card.thumb_url
           ? <img src={card.thumb_url} alt={card.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           : <ImageOff size={28} color="var(--text-dim)" />}
+        {needsReview(card) && (
+          <span
+            title="Needs review"
+            style={{ position: "absolute", top: 6, right: 6, width: 22, height: 22, borderRadius: "50%", background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          >
+            <Flag size={12} color="#E5484D" fill="#E5484D" />
+          </span>
+        )}
       </div>
       <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "flex-start" }}>

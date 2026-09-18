@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabaseClient";
-import { emptyFilters } from "./constants";
+import { emptyFilters, needsReview } from "./constants";
 import * as db from "./lib/db";
 import Auth from "./components/Auth";
 import Header from "./components/Header";
@@ -93,6 +93,7 @@ export default function App() {
         if (filters.type !== "All" && c.type !== filters.type) return false;
         if (filters.rarity !== "All" && c.rarity !== filters.rarity) return false;
         if (filters.tag !== "All" && !(c.tags || []).includes(filters.tag)) return false;
+        if (filters.needsReview && !needsReview(c)) return false;
         return true;
       })
       .sort((a, b) => a.name.localeCompare(b.name));
