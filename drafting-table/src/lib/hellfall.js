@@ -82,7 +82,11 @@ export function buildImportPatch(card) {
   if (manaCost && isValidManaCost(manaCost)) {
     patch.manaCost = manaCost;
     patch.cmc = manaCostCmc(manaCost);
-    patch.colors = manaCostColors(manaCost);
+    // Split-style cards report an explicit color union (from both halves)
+    // that a single mana-cost string can't express - prefer it when present.
+    patch.colors = Array.isArray(card.colors) && card.colors.length > 0
+      ? card.colors.map((c) => c.toUpperCase())
+      : manaCostColors(manaCost);
   } else if (card.mana_cost) {
     warnings.push("mana cost");
   }

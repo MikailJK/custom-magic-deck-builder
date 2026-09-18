@@ -33,20 +33,21 @@ async function imageToDataUrl(url) {
   return `data:${contentType};base64,${buf.toString("base64")}`;
 }
 
-// Transform/split/flip/aftermath/meld/mutate cards carry their real data in
-// card_faces instead of the top-level fields - split-card faces in particular
-// often have no image of their own (one printed image covers both halves),
-// so fall back to the whole card's image in that case.
-async function faceToResult(face, fallbackImage) {
-  const imageUrl = face.image || fallbackImage;
-  let image = null;
-  if (imageUrl) {
-    try {
-      image = await imageToDataUrl(imageUrl);
-    } catch (err) {
-      console.error("hellfall-card: image fetch failed", err);
-    }
+async function resolveImage(url) {
+  if (!url) return null;
+  try {
+    return await imageToDataUrl(url);
+  } catch (err) {
+    console.error("hellfall-card: image fetch failed", err);
+    return null;
   }
+}
+
+// Transform cards carry their real data in card_faces, each face with its
+// own image - only one face is shown at a time, so this makes one of them
+// (the front, or the back) importable on its own.
+async function faceToResult(face, fallbackImage) {
+  const image = await resolveImage(face.image || fallbackImage);
   return {
     name: face.name || "",
     mana_cost: face.mana_cost || "",
@@ -55,7 +56,47 @@ async function faceToResult(face, fallbackImage) {
     flavor_text: face.flavor_text || "",
     power: face.power ?? null,
     toughness: face.toughness ?? null,
+    colors: face.colors || [],
     image,
+  };
+}
+
+// Split/aftermath cards also carry card_faces, but both halves are printed
+// on one shared card - unlike transform faces, they have no image of their
+// own. That's the signal we use instead of trusting layout name strings,
+// since it'll also catch any other layout shaped the same way.
+function isSplitStyle(card) {
+  const faces = card.card_faces;
+  return !!(faces && faces.length > 1 && faces.every((f) => !f.image));
+}
+
+// Combines both halves into one pool card: the higher-cost half becomes the
+// "primary" (its mana cost/type/power-toughness populate the normal fields,
+// so cmc naturally comes out as the larger of the two), the cheaper half's
+// cost and text are folded into the rules text instead of dropped, and
+// colors is the union of both halves rather than just the primary's.
+async function buildSplitResult(card) {
+  const faces = card.card_faces;
+  const primary = [...faces].sort((a, b) => (b.mana_value ?? 0) - (a.mana_value ?? 0))[0];
+
+  const oracle_text = faces
+    .map((f) => [f.mana_cost ? `${f.name} (${f.mana_cost})` : f.name, f.oracle_text].filter(Boolean).join("\n"))
+    .join("\n\n");
+  const flavor_text = faces.map((f) => f.flavor_text).filter(Boolean).join("\n\n");
+
+  const image = await resolveImage(card.rotated_image || card.image);
+
+  return {
+    name: card.name || faces.map((f) => f.name).join(" // "),
+    mana_cost: primary.mana_cost || "",
+    type_line: primary.type_line || "",
+    oracle_text,
+    flavor_text,
+    power: primary.power ?? null,
+    toughness: primary.toughness ?? null,
+    colors: card.colors || [],
+    image,
+    back: null,
   };
 }
 
@@ -91,11 +132,17 @@ export default async function handler(req, res) {
       return;
     }
 
-    const faces = card.card_faces && card.card_faces.length > 0 ? card.card_faces : [card];
-    const front = await faceToResult(faces[0], card.image);
-    const back = faces[1] ? await faceToResult(faces[1], card.image) : null;
+    let result;
+    if (isSplitStyle(card)) {
+      result = await buildSplitResult(card);
+    } else {
+      const faces = card.card_faces && card.card_faces.length > 0 ? card.card_faces : [card];
+      const front = await faceToResult(faces[0], card.image);
+      const back = faces[1] ? await faceToResult(faces[1], card.image) : null;
+      result = { ...front, back };
+    }
 
-    res.status(200).json({ hcid: card.hcid, ...front, back });
+    res.status(200).json({ hcid: card.hcid, ...result });
   } catch (err) {
     console.error("hellfall-card error", err);
     res.status(502).json({ error: "Couldn't reach the Hellfall catalog" });
