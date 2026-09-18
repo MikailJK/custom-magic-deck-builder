@@ -5,7 +5,7 @@ import ManaCost from "./ManaCost";
 import { MANA_COLORS, CARD_TYPES } from "../constants";
 
 export default function CardSearchModal({
-  cards, entriesByKey, isCube, onAdd, onClose, onOpenDetail, onPreview, onPreviewEnd,
+  cards, entriesByKey, isCube, onAdd, onAddMany, onClose, onOpenDetail, onPreview, onPreviewEnd,
 }) {
   const [query, setQuery] = useState("");
   const [type, setType] = useState("All");
@@ -41,6 +41,26 @@ export default function CardSearchModal({
 
   const toggleColor = (key) =>
     setColors((cs) => (cs.includes(key) ? cs.filter((c) => c !== key) : [...cs, key]));
+
+  // Bulk adds cover the whole pool (not just the current search) and skip cards
+  // already on the destination board, so the counts here are what would be added.
+  const destLabel = destination === "main" ? "the deck" : "the maybe board";
+  const bulkTargets = useMemo(() => {
+    const missing = cards.filter((c) => !entriesByKey[`${destination}:${c.id}`]);
+    const byColor = { All: missing, C: missing.filter((c) => !(c.colors || []).length) };
+    MANA_COLORS.forEach((m) => { byColor[m.key] = missing.filter((c) => (c.colors || []).includes(m.key)); });
+    return byColor;
+  }, [cards, entriesByKey, destination]);
+
+  const confirmAddMany = (key, what) => {
+    const targets = bulkTargets[key];
+    if (!targets.length) return;
+    const n = targets.length;
+    const ok = window.confirm(
+      `Add ${n} ${what} card${n === 1 ? "" : "s"} to ${destLabel}? One copy of each; cards already there are skipped.`
+    );
+    if (ok) onAddMany(targets.map((c) => c.id), destination);
+  };
 
   return (
     <Modal onClose={onClose} width={640}>
@@ -99,6 +119,34 @@ export default function CardSearchModal({
             >
               Add to maybe
             </button>
+          </div>
+
+          <div className="dt-addcards-bulk">
+            <button
+              type="button" className="dt-btn" disabled={!bulkTargets.All.length}
+              onClick={() => confirmAddMany("All", "pool")}
+              title={`Add every pool card not already in ${destLabel}`}
+            >
+              Add all cards ({bulkTargets.All.length})
+            </button>
+            <select
+              className="dt-select dt-addcards-type" value=""
+              onChange={(e) => {
+                const key = e.target.value;
+                if (!key) return;
+                const label = key === "C" ? "colorless" : MANA_COLORS.find((m) => m.key === key).label.toLowerCase();
+                confirmAddMany(key, label);
+              }}
+              title={`Add every card of one color not already in ${destLabel}`}
+            >
+              <option value="">Add all of a color…</option>
+              {MANA_COLORS.map((m) => (
+                <option key={m.key} value={m.key} disabled={!bulkTargets[m.key].length}>
+                  {m.label} ({bulkTargets[m.key].length})
+                </option>
+              ))}
+              <option value="C" disabled={!bulkTargets.C.length}>Colorless ({bulkTargets.C.length})</option>
+            </select>
           </div>
         </div>
 

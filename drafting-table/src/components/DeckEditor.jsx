@@ -12,7 +12,7 @@ const isMode = (modes) => (value) => modes.some((m) => m.key === value);
 
 export default function DeckEditor({
   deck, cards, cardsById, onBack, onOpenCardDetail,
-  onAddCard, onSetQty, onRemove, onMoveBoard, onSetCategory,
+  onAddCard, onAddMany, onSetQty, onRemove, onMoveBoard, onSetCategory,
   onRename, onSetTarget, onAddColumn, onRenameColumn, onDeleteColumn,
 }) {
   const [nameDraft, setNameDraft] = useState(deck.name);
@@ -213,7 +213,7 @@ export default function DeckEditor({
       {addOpen && (
         <CardSearchModal
           cards={cards} entriesByKey={entriesByKey} isCube={isCube}
-          onAdd={onAddCard} onClose={() => setAddOpen(false)}
+          onAdd={onAddCard} onAddMany={onAddMany} onClose={() => setAddOpen(false)}
           onOpenDetail={onOpenCardDetail} onPreview={showPreview} onPreviewEnd={hidePreview}
         />
       )}

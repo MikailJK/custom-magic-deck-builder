@@ -201,6 +201,18 @@ export default function App() {
     await handleSetDeckCardQty(cardId, board, nextQty);
   }
 
+  // One copy of each card that isn't already on the board.
+  async function handleAddManyToDeck(cardIds, board = "main") {
+    const deck = activeDeckRef.current;
+    const fresh = cardIds.filter((id) => !findEntry(deck, id, board));
+    if (!fresh.length) return;
+    applyDeck((d) => ({
+      ...d,
+      cards: [...d.cards, ...fresh.map((cardId) => ({ cardId, qty: 1, board, category: null }))],
+    }));
+    await commitDeck(() => db.addDeckCards(deck.id, fresh, board));
+  }
+
   async function handleRemoveFromDeck(cardId, board = "main") {
     await handleSetDeckCardQty(cardId, board, 0);
   }
@@ -307,7 +319,7 @@ export default function App() {
           deckLoading || !activeDeck ? <p className="dt-loading">Opening deck…</p> : (
             <DeckEditor
               deck={activeDeck} cards={cards} cardsById={cardsById}
-              onAddCard={handleAddToDeck} onSetQty={handleSetDeckCardQty} onRemove={handleRemoveFromDeck}
+              onAddCard={handleAddToDeck} onAddMany={handleAddManyToDeck} onSetQty={handleSetDeckCardQty} onRemove={handleRemoveFromDeck}
               onMoveBoard={handleMoveDeckCardBoard} onSetCategory={handleSetDeckCardCategory}
               onRename={handleRenameDeck} onSetTarget={handleSetDeckTarget}
               onAddColumn={handleAddColumn} onRenameColumn={handleRenameColumn} onDeleteColumn={handleDeleteColumn}

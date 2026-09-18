@@ -74,7 +74,7 @@ function CardFaceFields({
 
   return (
     <>
-      <div style={{ padding: 22, display: "grid", gridTemplateColumns: "150px 1fr", gap: 20 }}>
+      <div style={{ padding: 22, display: "grid", gridTemplateColumns: "minmax(0, 150px) 1fr", gap: 20 }}>
         <div>
           <label
             htmlFor={imageInputId}

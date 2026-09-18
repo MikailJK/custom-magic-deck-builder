@@ -5,8 +5,8 @@ import { RARITY_HEX } from "../constants";
 
 function FaceBlock({ face, rounded }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", flex: 1, minWidth: 0 }}>
-      <div style={{ background: "var(--panel2)", borderRadius: rounded, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 220px) 1fr", flex: 1, minWidth: 0 }}>
+      <div style={{ background: "var(--panel2)", borderRadius: rounded, overflow: "hidden", aspectRatio: "5 / 7", alignSelf: "start", display: "flex", alignItems: "center", justifyContent: "center" }}>
         {face.image_url
           ? <img src={face.image_url} alt={face.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           : <ImageOff size={32} color="var(--text-dim)" />}

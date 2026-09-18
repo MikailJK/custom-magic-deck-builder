@@ -21,6 +21,11 @@ export default function FilterBar({ filters, setFilters, allTags }) {
           value={filters.text} onChange={(e) => setFilters((f) => ({ ...f, text: e.target.value }))}
         />
       </div>
+      {hasActiveFilters && (
+        <button type="button" className="dt-btn dt-btn-icon" onClick={() => setFilters(emptyFilters)} title="Clear filters">
+          <X size={15} />
+        </button>
+      )}
       <div style={{ display: "flex", gap: 4 }}>
         {MANA_COLORS.map((c) => (
           <button
@@ -52,11 +57,6 @@ export default function FilterBar({ filters, setFilters, allTags }) {
           <option value="All">All tags</option>
           {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
-      )}
-      {hasActiveFilters && (
-        <button type="button" className="dt-btn dt-btn-icon" onClick={() => setFilters(emptyFilters)} title="Clear filters">
-          <X size={15} />
-        </button>
       )}
     </div>
   );

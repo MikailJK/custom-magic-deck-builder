@@ -172,6 +172,17 @@ export async function setDeckCardQty(deckId, cardId, board, qty, category) {
   await touchDeck(deckId);
 }
 
+// One copy of each card in a single request. Callers skip cards already on the
+// board so an upsert never resets an existing quantity.
+export async function addDeckCards(deckId, cardIds, board) {
+  if (!cardIds.length) return;
+  const rows = cardIds.map((cardId) => ({ deck_id: deckId, card_id: cardId, board, qty: 1 }));
+  const { error } = await supabase
+    .from("deck_cards").upsert(rows, { onConflict: "deck_id,card_id,board" });
+  if (error) throw error;
+  await touchDeck(deckId);
+}
+
 export async function setDeckCardCategory(deckId, cardId, board, category) {
   const { error } = await supabase
     .from("deck_cards").update({ category })
