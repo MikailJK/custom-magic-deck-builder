@@ -18,8 +18,10 @@ async function loadCatalog() {
   }
   const res = await fetch(CATALOG_URL);
   if (!res.ok) throw new Error(`Failed to fetch catalog: ${res.status}`);
+  // The catalog is keyed by internal id, not a flat card list - hcidMap maps
+  // the public hcid (what shows up in Hellfall URLs) to that internal id.
   const json = await res.json();
-  catalogCache = { data: json.data, fetchedAt: Date.now() };
+  catalogCache = { data: json, fetchedAt: Date.now() };
   return catalogCache.data;
 }
 
@@ -126,7 +128,8 @@ export default async function handler(req, res) {
 
   try {
     const catalog = await loadCatalog();
-    const card = catalog.find((c) => c.hcid === id);
+    const internalId = catalog.hcidMap[id];
+    const card = internalId ? catalog.idMap[internalId] : null;
     if (!card) {
       res.status(404).json({ error: `No Hellfall card found with id "${id}"` });
       return;
