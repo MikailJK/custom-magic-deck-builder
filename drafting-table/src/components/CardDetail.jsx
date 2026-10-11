@@ -39,7 +39,7 @@ function FaceBlock({ face, rounded }) {
   );
 }
 
-export default function CardDetail({ card, onClose, onEdit, onDelete }) {
+export default function CardDetail({ card, onClose, onEdit, onDelete, showPublic = false }) {
   const hasBack = !!card.back;
 
   return (
@@ -59,6 +59,7 @@ export default function CardDetail({ card, onClose, onEdit, onDelete }) {
       <div style={{ padding: "0 22px 22px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <p style={{ fontSize: 12, color: "var(--text-dim)", margin: 0 }}>
           Added by {card.added_by || "unknown"}{card.created_at ? ` · ${new Date(card.created_at).toLocaleDateString()}` : ""}
+          {showPublic && card.is_public ? " · Public" : ""}
         </p>
         <div style={{ display: "flex", gap: 10 }}>
           <button className="dt-btn" onClick={onEdit}><Pencil size={14} />Edit</button>

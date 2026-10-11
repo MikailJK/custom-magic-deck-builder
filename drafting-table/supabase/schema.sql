@@ -27,7 +27,14 @@ create table if not exists cards (
   -- A double-faced card is two rows cross-linked by linked_card_id; is_front
   -- decides which one shows up in the pool/search/deck-building.
   linked_card_id uuid references cards(id) on delete set null,
-  is_front boolean not null default true
+  is_front boolean not null default true,
+  -- Shown to signed-out visitors. Only admins can change it (see the trigger below).
+  is_public boolean not null default false
+);
+
+-- Who may mark cards public. Rows are added by hand in the SQL editor.
+create table if not exists admins (
+  user_id uuid primary key references auth.users(id) on delete cascade
 );
 
 create table if not exists decks (
@@ -74,6 +81,37 @@ create policy "authenticated write deck_cards" on deck_cards for insert with che
 create policy "authenticated update deck_cards" on deck_cards for update using (auth.role() = 'authenticated');
 create policy "authenticated delete deck_cards" on deck_cards for delete using (auth.role() = 'authenticated');
 
+-- Public guest view: signed-out visitors can read public cards (and the back
+-- faces of public cards) and nothing else.
+alter table admins enable row level security;
+create policy "read own admin row" on admins for select using (user_id = auth.uid());
+
+create or replace function card_is_public(card_id uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select is_public from cards where id = card_id), false);
+$$;
+
+create policy "anon read public cards" on cards for select to anon
+  using (is_public or (not is_front and card_is_public(linked_card_id)));
+
+create or replace function guard_card_is_public() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from admins where user_id = auth.uid()) then
+    if tg_op = 'INSERT' then
+      new.is_public := false;
+    else
+      new.is_public := old.is_public;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+create trigger cards_guard_is_public before insert or update on cards
+  for each row execute function guard_card_is_public();
+
+create index if not exists idx_cards_is_public on cards(is_public) where is_public;
 create index if not exists idx_deck_cards_deck on deck_cards(deck_id);
 create index if not exists idx_deck_cards_deck_board on deck_cards(deck_id, board);
 create index if not exists idx_cards_name on cards(name);

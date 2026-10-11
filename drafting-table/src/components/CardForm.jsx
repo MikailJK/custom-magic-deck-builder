@@ -218,10 +218,13 @@ function CardFaceFields({
   );
 }
 
-export default function CardForm({ initial, profileName, existingCards, onCancel, onSave }) {
+// `blockGuest(reason)` returns true (and shows the public-site note) when the
+// visitor isn't signed in; every network write in here checks it first.
+export default function CardForm({ initial, profileName, existingCards, onCancel, onSave, isAdmin = false, blockGuest = () => false }) {
   const [form, setForm] = useState(() => emptyFace(initial));
   const [isDoubleFaced, setIsDoubleFaced] = useState(!!initial?.back);
   const [flagged, setFlagged] = useState(() => needsReview(initial));
+  const [isPublic, setIsPublic] = useState(!!initial?.is_public);
   const [back, setBack] = useState(() => emptyFace(initial?.back));
 
   const [imageBlobs, setImageBlobs] = useState(null); // { full, thumb } — only set when a new image is chosen
@@ -303,6 +306,7 @@ export default function CardForm({ initial, profileName, existingCards, onCancel
 
   const handleImportFromHellfall = async () => {
     if (!hellfallId.trim()) return;
+    if (blockGuest("import")) return;
     if (isRedditUrl(hellfallId)) return handleImportFromReddit();
     setHellfallImport({ status: "loading", message: "Looking up card…" });
     try {
@@ -367,6 +371,8 @@ export default function CardForm({ initial, profileName, existingCards, onCancel
 
   const submit = async () => {
     if (!canSave) return;
+    // Before the image uploads, so a guest never touches R2 either.
+    if (blockGuest("save")) return;
     setSaving(true);
     try {
       let imageUrl = initial?.image_url || null;
@@ -398,6 +404,7 @@ export default function CardForm({ initial, profileName, existingCards, onCancel
       await onSave({
         ...faceToSavePayload(form, initial?.added_by || profileName),
         ...(flagged ? { cmc: NEEDS_REVIEW_CMC } : {}),
+        ...(isAdmin ? { isPublic } : {}),
         imageUrl,
         thumbUrl,
         back: backPayload,
@@ -455,6 +462,15 @@ export default function CardForm({ initial, profileName, existingCards, onCancel
             <input type="checkbox" checked={flagged} onChange={(e) => handleFlaggedChange(e.target.checked)} />
             Needs review
           </label>
+          {isAdmin && (
+            <label
+              style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}
+              title="Shows this card (and its back face) to visitors who aren't signed in"
+            >
+              <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
+              Public
+            </label>
+          )}
         </div>
 
         <CardFaceFields

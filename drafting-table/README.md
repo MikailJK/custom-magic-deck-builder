@@ -104,6 +104,22 @@ vercel dev
   colors are left for manual entry, since those are usually icon symbols
   rather than text.
 
+## Public view
+
+Visitors who aren't signed in see a read-only public view instead of a login
+wall. It shows only cards an admin has marked **Public** (back faces follow
+their front). Guests can open the card form and build decks, but nothing is
+written. Saving, deleting and importing show a "make an account" note, and
+guest decks vanish on refresh. This is enforced in the database by RLS, not
+just hidden in the UI.
+
+To become an admin (so the Public checkbox appears in the card form), run
+`supabase/migrations/003_public_cards.sql`, then add yourself in the SQL editor:
+
+```sql
+insert into admins (user_id) values ('<your id from Authentication > Users>');
+```
+
 ## Known limitations, honestly
 
 - OCR accuracy depends on how closely a card's layout matches the classic
