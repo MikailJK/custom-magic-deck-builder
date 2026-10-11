@@ -1,7 +1,7 @@
-import { Search, X, Flag } from "lucide-react";
+import { Search, X, Flag, Globe } from "lucide-react";
 import { MANA_COLORS, CARD_TYPES, RARITIES, emptyFilters } from "../constants";
 
-export default function FilterBar({ filters, setFilters, allTags }) {
+export default function FilterBar({ filters, setFilters, allTags, showPublicFilter = false }) {
   const toggleColor = (key) => {
     setFilters((f) => {
       const has = f.colors.includes(key);
@@ -10,7 +10,7 @@ export default function FilterBar({ filters, setFilters, allTags }) {
   };
 
   const hasActiveFilters =
-    filters.text || filters.colors.length || filters.type !== "All" || filters.rarity !== "All" || filters.tag !== "All" || filters.needsReview;
+    filters.text || filters.colors.length || filters.type !== "All" || filters.rarity !== "All" || filters.tag !== "All" || filters.needsReview || filters.publicOnly;
 
   return (
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
@@ -60,6 +60,16 @@ export default function FilterBar({ filters, setFilters, allTags }) {
       >
         <Flag size={14} fill={filters.needsReview ? "#E5484D" : "none"} />Needs review
       </button>
+      {showPublicFilter && (
+        <button
+          type="button" className="dt-btn"
+          style={filters.publicOnly ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}}
+          onClick={() => setFilters((f) => ({ ...f, publicOnly: !f.publicOnly }))}
+          aria-pressed={filters.publicOnly} title="Show only cards visible on the public site"
+        >
+          <Globe size={14} />Public
+        </button>
+      )}
       {allTags.length > 0 && (
         <select className="dt-select" style={{ width: "auto" }} value={filters.tag} onChange={(e) => setFilters((f) => ({ ...f, tag: e.target.value }))}>
           <option value="All">All tags</option>

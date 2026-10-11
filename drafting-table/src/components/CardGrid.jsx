@@ -1,8 +1,8 @@
-import { ImageOff, Flag } from "lucide-react";
+import { ImageOff, Flag, Globe } from "lucide-react";
 import ManaPips from "./ManaPips";
 import { RARITY_HEX, needsReview } from "../constants";
 
-function CardTile({ card, onOpen }) {
+function CardTile({ card, onOpen, showPublic }) {
   return (
     <div className="dt-card-tile" onClick={() => onOpen(card)}>
       <div style={{ position: "relative", aspectRatio: "5/7", background: "var(--panel2)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
@@ -15,6 +15,14 @@ function CardTile({ card, onOpen }) {
             style={{ position: "absolute", top: 6, right: 6, width: 22, height: 22, borderRadius: "50%", background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center" }}
           >
             <Flag size={12} color="#E5484D" fill="#E5484D" />
+          </span>
+        )}
+        {showPublic && card.is_public && (
+          <span
+            title="Visible on the public site"
+            style={{ position: "absolute", top: 6, left: 6, width: 22, height: 22, borderRadius: "50%", background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          >
+            <Globe size={12} color="var(--accent)" />
           </span>
         )}
       </div>
@@ -41,7 +49,7 @@ function CardTile({ card, onOpen }) {
   );
 }
 
-export default function CardGrid({ cards, onOpen, emptyTitle, emptyBody }) {
+export default function CardGrid({ cards, onOpen, emptyTitle, emptyBody, showPublic = false }) {
   if (cards.length === 0) {
     return (
       <div className="dt-panel" style={{ padding: 40, textAlign: "center" }}>
@@ -52,7 +60,7 @@ export default function CardGrid({ cards, onOpen, emptyTitle, emptyBody }) {
   }
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 }}>
-      {cards.map((c) => <CardTile key={c.id} card={c} onOpen={onOpen} />)}
+      {cards.map((c) => <CardTile key={c.id} card={c} onOpen={onOpen} showPublic={showPublic} />)}
     </div>
   );
 }

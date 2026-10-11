@@ -15,7 +15,7 @@ export const RARITY_HEX = { Common: "#9C9689", Uncommon: "#7FA4B0", Rare: "#C8A2
 export const NEEDS_REVIEW_CMC = 59;
 export const needsReview = (card) => card?.cmc === NEEDS_REVIEW_CMC;
 
-export const emptyFilters = { text: "", colors: [], type: "All", rarity: "All", tag: "All", needsReview: false };
+export const emptyFilters = { text: "", colors: [], type: "All", rarity: "All", tag: "All", needsReview: false, publicOnly: false };
 
 export const DEFAULT_TARGET_SIZE = 40;
 export const UNCATEGORIZED = "Uncategorized";

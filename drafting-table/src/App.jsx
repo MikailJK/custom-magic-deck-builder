@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabaseClient";
-import { emptyFilters, needsReview } from "./constants";
+import { emptyFilters, needsReview, DEFAULT_TARGET_SIZE } from "./constants";
 import * as db from "./lib/db";
 import Auth from "./components/Auth";
 import Header from "./components/Header";
@@ -9,10 +9,23 @@ import DeckList from "./components/DeckList";
 import DeckEditor from "./components/DeckEditor";
 import CardForm from "./components/CardForm";
 import CardDetail from "./components/CardDetail";
+import GuestNotice from "./components/GuestNotice";
 
 export default function App() {
   const [session, setSession] = useState(undefined); // undefined = still checking
   const [booting, setBooting] = useState(true);
+  const loadedOnceRef = useRef(false);
+
+  // Signed-out visitors get the public view: public cards only, and nothing
+  // they do is written anywhere. Decks they build live in guestDecksRef until
+  // the tab closes.
+  const userId = session === undefined ? undefined : session?.user?.id ?? null;
+  const isGuest = session === null;
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [authMode, setAuthMode] = useState(null); // null | "signin" | "signup"
+  const [guestNotice, setGuestNotice] = useState(null); // null | reason key
+  const guestDecksRef = useRef(new Map());
+  const deckNoticeShownRef = useRef(false);
 
   const [cards, setCards] = useState([]);
   const [decks, setDecks] = useState([]);
@@ -40,15 +53,32 @@ export default function App() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  // Load shared data once signed in. Cards and decks are settled independently
-  // so a failure on one does not leave the other silently empty.
+  // Load data whenever who's looking changes (guest, or a signed-in user). For
+  // a guest, RLS narrows fetchCards to the public cards. Cards and decks are
+  // settled independently so a failure on one does not leave the other
+  // silently empty.
   useEffect(() => {
-    if (!session) return;
+    if (userId === undefined) return;
+    let cancelled = false;
     (async () => {
-      setBooting(true);
-      const [cardResult, deckResult] = await Promise.allSettled([db.fetchCards(), db.fetchDecks()]);
+      // Only the first load blanks the screen - signing in from the public
+      // view swaps the data in behind any half-filled card form.
+      if (!loadedOnceRef.current) setBooting(true);
+      if (userId) { setAuthMode(null); setGuestNotice(null); }
+      closeDeck();
+      guestDecksRef.current = new Map();
+      setIsAdmin(false);
+
+      const [cardResult, deckResult, adminResult] = await Promise.allSettled([
+        db.fetchCards(),
+        userId ? db.fetchDecks() : Promise.resolve([]),
+        userId ? db.fetchIsAdmin(userId) : Promise.resolve(false),
+      ]);
+      if (cancelled) return;
       if (cardResult.status === "fulfilled") setCards(cardResult.value);
       if (deckResult.status === "fulfilled") setDecks(deckResult.value);
+      if (adminResult.status === "fulfilled") setIsAdmin(adminResult.value);
+      else console.warn("Couldn't check admin status", adminResult.reason);
 
       const failures = [];
       if (cardResult.status === "rejected") failures.push(["the card pool", cardResult.reason]);
@@ -59,9 +89,11 @@ export default function App() {
           ? `Couldn't load ${failures.map(([what]) => what).join(" or ")}: ${failures[0][1]?.message || "unknown error"}`
           : ""
       );
+      loadedOnceRef.current = true;
       setBooting(false);
     })();
-  }, [session]);
+    return () => { cancelled = true; };
+  }, [userId]);
 
   const profileName = session?.user?.user_metadata?.display_name || session?.user?.email || "";
 
@@ -94,6 +126,7 @@ export default function App() {
         if (filters.rarity !== "All" && c.rarity !== filters.rarity) return false;
         if (filters.tag !== "All" && !(c.tags || []).includes(filters.tag)) return false;
         if (filters.needsReview && !needsReview(c)) return false;
+        if (filters.publicOnly && !c.is_public) return false;
         return true;
       })
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -106,13 +139,29 @@ export default function App() {
     setDecks(await db.fetchDecks());
   }
 
+  // True (and shows the public-site note) when a guest tries to write.
+  function blockGuest(reason) {
+    if (!isGuest) return false;
+    setGuestNotice(reason);
+    return true;
+  }
+
+  const mainCount = (deck) =>
+    deck.cards.filter((c) => c.board === "main").reduce((n, c) => n + c.qty, 0);
+
+  function publishGuestDecks() {
+    setDecks([...guestDecksRef.current.values()].map((d) => ({ ...d, cardCount: mainCount(d) })));
+  }
+
   async function handleSaveCard(cardPatch) {
+    if (blockGuest("save")) return;
     await db.saveCard(cardPatch, editingCard?.id || null, editingCard?.back?.id || null);
     await refreshCards();
     setCardFormOpen(false);
   }
 
   async function handleDeleteCard(id, backId) {
+    if (blockGuest("delete")) return;
     await db.deleteCard(id, backId);
     await refreshCards();
     setDetailCard(null);
@@ -123,6 +172,22 @@ export default function App() {
   }
 
   async function handleCreateDeck(name, format) {
+    if (isGuest) {
+      const now = new Date().toISOString();
+      const deck = {
+        id: crypto.randomUUID(), name, format, categories: [], targetSize: DEFAULT_TARGET_SIZE, cards: [],
+        created_at: now, updated_at: now,
+      };
+      guestDecksRef.current = new Map([[deck.id, deck], ...guestDecksRef.current]);
+      publishGuestDecks();
+      // Building is the point of the public view, so this is said once rather
+      // than on every edit.
+      if (!deckNoticeShownRef.current) {
+        deckNoticeShownRef.current = true;
+        setGuestNotice("deck");
+      }
+      return deck;
+    }
     const deck = await db.createDeck(name, format);
     await refreshDecks();
     return deck;
@@ -140,6 +205,12 @@ export default function App() {
   // Optimistic edits would silently drift from the database if a write failed,
   // so a failure pulls the deck back from the server instead.
   async function commitDeck(write) {
+    if (isGuest) {
+      const deck = activeDeckRef.current;
+      guestDecksRef.current.set(deck.id, { ...deck, updated_at: new Date().toISOString() });
+      publishGuestDecks();
+      return;
+    }
     try {
       await write();
       refreshDecks();
@@ -152,6 +223,10 @@ export default function App() {
 
   async function openDeck(id) {
     setActiveDeckId(id);
+    if (isGuest) {
+      setDeck(guestDecksRef.current.get(id) || null);
+      return;
+    }
     setDeckLoading(true);
     try {
       setDeck(await db.fetchDeck(id));
@@ -166,8 +241,13 @@ export default function App() {
   }
 
   async function handleDeleteDeck(id) {
-    await db.deleteDeck(id);
-    await refreshDecks();
+    if (isGuest) {
+      guestDecksRef.current.delete(id);
+      publishGuestDecks();
+    } else {
+      await db.deleteDeck(id);
+      await refreshDecks();
+    }
     if (activeDeckId === id) closeDeck();
   }
 
@@ -294,21 +374,19 @@ export default function App() {
   if (session === undefined) {
     return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}><p className="dt-loading">Loading…</p></div>;
   }
-  if (!session) {
-    return <Auth />;
-  }
   if (booting) {
     return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}><p className="dt-loading">Loading Barnky Deck…</p></div>;
   }
 
   return (
     <div>
-      <Header tab={tab} setTab={setTab} profileName={profileName} />
+      <Header tab={tab} setTab={setTab} profileName={profileName} isGuest={isGuest} onSignIn={() => setAuthMode("signin")} />
       <main className="dt-main">
         {loadError && <div className="dt-banner">{loadError}</div>}
         {tab === "pool" && (
           <PoolView
             filters={filters} setFilters={setFilters} cards={filteredCards} allTags={allTags}
+            isGuest={isGuest} isAdmin={isAdmin}
             onAdd={() => { setEditingCard(null); setCardFormOpen(true); }}
             onOpenDetail={openCardDetail}
           />
@@ -338,20 +416,37 @@ export default function App() {
           existingCards={cards}
           onCancel={() => setCardFormOpen(false)}
           onSave={handleSaveCard}
+          isAdmin={isAdmin}
+          blockGuest={blockGuest}
         />
       )}
 
       {detailCard && (
         <CardDetail
           card={detailCard}
+          showPublic={isAdmin}
           onClose={() => setDetailCard(null)}
           onEdit={() => { setEditingCard(detailCard); setDetailCard(null); setCardFormOpen(true); }}
           onDelete={() => {
+            if (blockGuest("delete")) return;
             if (window.confirm(`Remove "${detailCard.name}" from the card pool? This can't be undone.`)) {
               handleDeleteCard(detailCard.id, detailCard.back?.id);
             }
           }}
         />
+      )}
+
+      {/* Rendered last so they sit above an open card form. */}
+      {guestNotice && (
+        <GuestNotice
+          reason={guestNotice}
+          onClose={() => setGuestNotice(null)}
+          onSignIn={() => { setGuestNotice(null); setAuthMode("signin"); }}
+          onSignUp={() => { setGuestNotice(null); setAuthMode("signup"); }}
+        />
+      )}
+      {isGuest && authMode && (
+        <Auth key={authMode} initialMode={authMode} onClose={() => setAuthMode(null)} />
       )}
     </div>
   );

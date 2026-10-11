@@ -43,6 +43,8 @@ function cardToRow(card, extra) {
     thumb_url: card.thumbUrl,
     added_by: card.addedBy,
     updated_at: new Date().toISOString(),
+    // Only admins send this; leaving it out keeps the stored flag untouched.
+    ...(card.isPublic !== undefined ? { is_public: card.isPublic } : {}),
     ...extra,
   };
 }
@@ -93,6 +95,15 @@ export async function deleteCard(id, backId) {
   }
   const { error } = await supabase.from("cards").delete().eq("id", id);
   if (error) throw error;
+}
+
+// --- Admins ---
+
+// RLS only lets a user see their own admins row, so any row back means yes.
+export async function fetchIsAdmin(userId) {
+  const { data, error } = await supabase.from("admins").select("user_id").eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  return !!data;
 }
 
 // --- Decks ---

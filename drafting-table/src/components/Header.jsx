@@ -1,7 +1,7 @@
-import { Layers, Library, LogOut } from "lucide-react";
+import { Layers, Library, LogIn, LogOut } from "lucide-react";
 import { supabase } from "../supabaseClient";
 
-export default function Header({ tab, setTab, profileName }) {
+export default function Header({ tab, setTab, profileName, isGuest, onSignIn }) {
   return (
     <header style={{ borderBottom: "1px solid var(--border)", padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
@@ -15,12 +15,21 @@ export default function Header({ tab, setTab, profileName }) {
           </div>
         </nav>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span className="dt-chip">{profileName}</span>
-        <button type="button" className="dt-btn dt-btn-icon" title="Sign out" onClick={() => supabase.auth.signOut()}>
-          <LogOut size={15} />
-        </button>
-      </div>
+      {isGuest ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span className="dt-chip">Public view</span>
+          <button type="button" className="dt-btn" onClick={onSignIn}>
+            <LogIn size={15} />Sign in
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span className="dt-chip">{profileName}</span>
+          <button type="button" className="dt-btn dt-btn-icon" title="Sign out" onClick={() => supabase.auth.signOut()}>
+            <LogOut size={15} />
+          </button>
+        </div>
+      )}
     </header>
   );
 }

@@ -1,9 +1,12 @@
 import { useState } from "react";
-import { Lock } from "lucide-react";
+import { Lock, X } from "lucide-react";
+import Modal from "./Modal";
 import { supabase } from "../supabaseClient";
 
-export default function Auth() {
-  const [mode, setMode] = useState("signin");
+// Opened over the public view; a successful sign-in swaps the session in App,
+// which closes this and loads the full pool behind it.
+export default function Auth({ initialMode = "signin", onClose }) {
+  const [mode, setMode] = useState(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -41,11 +44,12 @@ export default function Auth() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div className="dt-panel" style={{ width: 380, padding: 28 }}>
+    <Modal onClose={onClose} width={380}>
+      <div style={{ padding: 28 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, color: "var(--accent)" }}>
           <Lock size={18} />
-          <span style={{ fontSize: 13, color: "var(--text-dim)" }}>Private table</span>
+          <span style={{ fontSize: 13, color: "var(--text-dim)", flex: 1 }}>Private table</span>
+          <button type="button" className="dt-btn dt-btn-icon" onClick={onClose} title="Close"><X size={15} /></button>
         </div>
         <h1 className="dt-brand" style={{ fontSize: 26, margin: "4px 0 18px" }}>Barnky Deck</h1>
 
@@ -86,6 +90,6 @@ export default function Auth() {
           </span>
         </p>
       </div>
-    </div>
+    </Modal>
   );
 }
